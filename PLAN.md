@@ -114,7 +114,7 @@ in `tools/oss.env` (non versionato). Non sono più valide per la lettura.
 
 ### Fase 4 — Primo firmware custom
 - [ ] 4.1 Toolchain `arm-none-eabi-gcc` + compilare un esempio minimo del SDK (**no flash**).
-- [ ] 4.2 `tools/mkimage.py`: header 16B (`projId=0x2a4b boot=4 stack=2 app=0x6900`) + CRC32
+- [x] 4.2 `tools/mkimage.py`: header 16B (`projId=0x2a4b boot=4 stack=2 app=0x6900`) + CRC32
       (varianti candidate). Offline, nessun dispositivo.
 - [ ] 4.3 Dry-run OTA **sicuro**: upload con CRC volutamente errato, leggere l'esito
       (`value[1]==3`) — **solo** dopo aver confermato lo staging. Prova il flusso end-to-end
