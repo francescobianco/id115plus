@@ -25,6 +25,8 @@
 #   ./id115plus reset --yes                restore factory settings (F1 03 18 01)
 #   ./id115plus raw <hex> [<hex>...]       write raw commands to cc06 (no padding)
 #   ./id115plus read <uuid>                read a characteristic, e.g. cc03 or full UUID
+#   ./id115plus ota-probe [seconds]        read-only: enable notify on fd02 and print what the
+#                                      band announces over the Maxscend OTA channel (no writes)
 #   ./id115plus status                     link state as seen by BlueZ and by the controller
 #   ./id115plus keepalive [seconds]        hold the connection, probing every N s (default 10)
 #                                      and reconnecting on failure, until Ctrl+C
@@ -311,6 +313,71 @@ sys.exit(3 if lost else 0)
 PY
 }
 
+# Read-only OTA probe: enable notifications on the Maxscend OTA cmd characteristic (fd02) and
+# print whatever the band announces (its version info, etc.). NO firmware commands are ever
+# written: StartNotify only writes the standard CCCD, nothing is sent on fd01/fd02. Safe.
+ota_probe() {
+  connect
+  python3 - "$DEV" "${1:-20}" <<'PY'
+import sys, datetime, dbus, dbus.mainloop.glib
+from gi.repository import GLib
+
+dev, secs = sys.argv[1], int(sys.argv[2])
+dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
+bus = dbus.SystemBus()
+objs = dbus.Interface(bus.get_object("org.bluez", "/"),
+                      "org.freedesktop.DBus.ObjectManager").GetManagedObjects()
+paths = {str(i["org.bluez.GattCharacteristic1"]["UUID"])[4:8]: p for p, i in objs.items()
+         if p.startswith(dev + "/") and "org.bluez.GattCharacteristic1" in i}
+for u in ("fd01", "fd02"):  # fd00 is the service UUID, not a characteristic
+    print(f"{u}: {'present' if u in paths else 'MISSING'}")
+if "fd02" not in paths:
+    sys.exit("fd02 (Maxscend OTA cmd) not found on this device")
+fd02 = dbus.Interface(bus.get_object("org.bluez", paths["fd02"]), "org.bluez.GattCharacteristic1")
+loop = GLib.MainLoop()
+
+
+def now():
+    return datetime.datetime.now().strftime("%H:%M:%S")
+
+
+def decode(v):
+    # the app parses MxdVersionInfo from a notification with value[1]==1, bytes [2..9]:
+    # projId u16LE, boot, stack, app u16LE, appStack, appBoot
+    if len(v) >= 10 and v[1] == 1:
+        projId = v[2] | v[3] << 8
+        app = v[6] | v[7] << 8
+        return (f"VERSION  projId=0x{projId:04x} boot={v[4]} stack={v[5]} "
+                f"app=0x{app:04x} appStack={v[8]} appBoot={v[9]}")
+    if len(v) >= 3 and v[1] == 2:
+        return f"READY  ({'go 0x55' if v[2] == 0x55 else f'byte2=0x{v[2]:02x}'})"
+    if len(v) >= 2 and v[1] == 3:
+        return "CRC RESULT"
+    return "(unrecognized)"
+
+
+def changed(iface, props, invalidated):
+    if "Value" in props:
+        v = bytes(props["Value"])
+        print(f"{now()}  fd02 <- {v.hex(' ')}   {decode(v)}")
+        sys.stdout.flush()
+
+
+bus.add_signal_receiver(changed, "PropertiesChanged", "org.freedesktop.DBus.Properties",
+                        "org.bluez", paths["fd02"])
+fd02.StartNotify()
+print(f"{now()}  notifications enabled on fd02; listening {secs}s (read-only, no writes)...")
+GLib.timeout_add_seconds(secs, loop.quit)
+try:
+    loop.run()
+finally:
+    try:
+        fd02.StopNotify()
+    except dbus.DBusException:
+        pass
+PY
+}
+
 case ${1:-} in
   info)
     read -r -a b <<< "$(read_char cc02)"
@@ -435,6 +502,9 @@ case ${1:-} in
   status)
     echo "bluez: connected $(prop Connected)  services $(prop ServicesResolved)  rssi $(prop RSSI)"
     if linked; then echo "controller: link up"; else echo "controller: no link"; fi ;;
+  ota-probe)
+    # read-only: listen to fd02 OTA notifications; default 20 s
+    ota_probe "${2:-20}" ;;
   keepalive)
     # probe with a cc02 read; gatt() reconnects and recovers on its own
     every=${2:-10}

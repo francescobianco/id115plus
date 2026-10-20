@@ -93,13 +93,14 @@ ha pubblicato un firmware/dump per questo chip**; gli unici dump ID115 sono per 
 Strumento: `tools/oss.py` (firma OSS V1/V4, list/get). Le credenziali vengono dall'APK e stanno
 in `tools/oss.env` (non versionato). Non sono più valide per la lettura.
 
-### Fase 2 — Osservare l'OTA dal dispositivo (sola lettura)
-- [ ] Abilitare le notifiche su `fd02` e leggere la versione che la band annuncia, **senza
-      inviare comandi di scrittura**. Conferma che il protocollo combacia e ci dà i campi
-      boot/stack/app reali del dispositivo.
-- [ ] (Opzionale, più avanti) riprodurre l'intero handshake ri-caricando l'immagine
-      **ufficiale identica** a quella già presente: è l'OTA più sicuro possibile (stessa
-      immagine), e prova che possiamo pilotare il flusso end-to-end.
+### Fase 2 — Osservare l'OTA dal dispositivo (sola lettura)  ✅ (fatto)
+- [x] Abilitate le notifiche su `fd02` (`./id115plus ota-probe`, read-only). La band annuncia la
+      versione **spontaneamente**: nessun comando di scrittura inviato.
+- [x] Parametri reali rilevati → [docs/device-ota-params.md](docs/device-ota-params.md):
+      `projId=0x2a4b boot=4 stack=2 app=0x6900 appStack=0 appBoot=0`. Protocollo Maxscend
+      confermato combaciante.
+- [ ] (Opzionale, più avanti) riprodurre l'intero handshake ri-caricando un'immagine **identica**
+      a quella presente: l'OTA più sicuro possibile. Rinviato: non abbiamo l'immagine ufficiale.
 
 ### Fase 3 — Capire la mappa di memoria
 - [ ] Studiare `app-OTA` dell'SDK MS1793: dove stanno bootloader, stack, app; indirizzi,
