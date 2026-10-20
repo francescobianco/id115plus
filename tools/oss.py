@@ -19,6 +19,8 @@ import hashlib
 import hmac
 import os
 import sys
+import time
+import urllib.parse
 import urllib.request
 from email.utils import formatdate
 
@@ -39,21 +41,53 @@ except KeyError:
     sys.exit("set OSS_AK and OSS_SK (env or tools/oss.env); see this file's docstring")
 
 
-def request(method, key="", query="", dest=None):
+SIGV = os.environ.get("OSS_SIGV", "4")  # Aliyun is disabling V1; default to V4
+REGION = os.environ.get("OSS_REGION") or ENDPOINT.split(".")[0].replace("oss-", "")
+
+
+def _auth_v1(method, key, query, headers):
     date = formatdate(usegmt=True)
-    resource = f"/{BUCKET}/{key}"
-    string_to_sign = f"{method}\n\n\n{date}\n{resource}"
-    sig = base64.b64encode(
-        hmac.new(SK.encode(), string_to_sign.encode(), hashlib.sha1).digest()
-    ).decode()
-    url = f"https://{BUCKET}.{ENDPOINT}/{key}"
+    headers["Date"] = date
+    sts = f"{method}\n\n\n{date}\n/{BUCKET}/{key}"
+    sig = base64.b64encode(hmac.new(SK.encode(), sts.encode(), hashlib.sha1).digest()).decode()
+    headers["Authorization"] = f"OSS {AK}:{sig}"
+
+
+def _auth_v4(method, key, query, headers):
+    now = time.gmtime()
+    iso, day = time.strftime("%Y%m%dT%H%M%SZ", now), time.strftime("%Y%m%d", now)
+    headers["x-oss-date"] = iso
+    headers["x-oss-content-sha256"] = "UNSIGNED-PAYLOAD"
+    canon_uri = "/" + BUCKET + "/" + urllib.parse.quote(key, safe="/")
+    qs = urllib.parse.urlencode(sorted(urllib.parse.parse_qsl(query))) if query else ""
+    signed = {k.lower(): v for k, v in headers.items()
+              if k.lower().startswith("x-oss-") or k.lower() in ("content-type", "content-md5")}
+    canon_headers = "".join(f"{k}:{signed[k].strip()}\n" for k in sorted(signed))
+    canon_req = f"{method}\n{canon_uri}\n{qs}\n{canon_headers}\n\nUNSIGNED-PAYLOAD"
+    scope = f"{day}/{REGION}/oss/aliyun_v4_request"
+    sts = f"OSS4-HMAC-SHA256\n{iso}\n{scope}\n{hashlib.sha256(canon_req.encode()).hexdigest()}"
+    k_date = hmac.new(("aliyun_v4" + SK).encode(), day.encode(), hashlib.sha256).digest()
+    k_region = hmac.new(k_date, REGION.encode(), hashlib.sha256).digest()
+    k_service = hmac.new(k_region, b"oss", hashlib.sha256).digest()
+    k_signing = hmac.new(k_service, b"aliyun_v4_request", hashlib.sha256).digest()
+    sig = hmac.new(k_signing, sts.encode(), hashlib.sha256).hexdigest()
+    headers["Authorization"] = (
+        f"OSS4-HMAC-SHA256 Credential={AK}/{scope},Signature={sig}")
+
+
+def request(method, key="", query="", dest=None):
+    headers = {}
+    (_auth_v4 if SIGV == "4" else _auth_v1)(method, key, query, headers)
+    url = f"https://{BUCKET}.{ENDPOINT}/" + urllib.parse.quote(key, safe="/")
     if query:
         url += "?" + query
-    req = urllib.request.Request(url, method=method)
-    req.add_header("Date", date)
-    req.add_header("Authorization", f"OSS {AK}:{sig}")
-    with urllib.request.urlopen(req, timeout=30) as r:
-        data = r.read()
+    req = urllib.request.Request(url, method=method, headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=30) as r:
+            data = r.read()
+    except urllib.error.HTTPError as e:
+        body = e.read().decode("utf-8", "replace")
+        sys.exit(f"HTTP {e.code} {e.reason}\n{body}")
     if dest:
         with open(dest, "wb") as f:
             f.write(data)
