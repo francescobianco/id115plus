@@ -47,6 +47,30 @@ temperatura, meteo, musica no.
 
 Variabili d'ambiente: `MAC`, `RETRIES` (default 5), `HCI` (default `hci0`).
 
+### Connessione e ripristino
+
+Il segnale è debole (RSSI ~ -93 dBm) e la connessione cade spesso. Inoltre `bluetoothd` può
+restare convinto che la band sia connessa (`Connected: yes`) quando il link radio non c'è più
+(`hcitool con` vuoto): ogni chiamata GATT risponde `Not connected` e `Disconnect` va in timeout.
+
+Per questo lo script controlla il link reale con `hcitool con` e, se una connessione,
+lettura o scrittura fallisce, ritenta salendo di livello:
+
+1. nuova connessione
+2. `Disconnect` e nuova connessione
+3. spegnimento e riaccensione dell'adattatore (`Powered` false/true via D-Bus, come
+   `bluetoothctl power off` / `power on`, senza sudo; scollega anche gli altri dispositivi BT)
+
+fino a `RETRIES` volte. `live` e `sync` si riconnettono e ripartono se il link cade.
+
+```shell
+./id115plus status          # stato secondo BlueZ e secondo il controller
+./id115plus keepalive 10    # tiene su la connessione, controllo ogni 10 s, fino a Ctrl+C
+```
+
+A mano, dal più leggero al più drastico: `bluetoothctl power off && bluetoothctl power on`,
+`sudo hciconfig hci0 down && sudo hciconfig hci0 up`, `sudo systemctl restart bluetooth`.
+
 Lo script parla con BlueZ via D-Bus (`busctl`): si connette da solo se serve, ogni scrittura
 attende la conferma, quindi niente `sleep` né errori `InProgress`. Il braccialetto deve essere
 già abbinato. `live` e `sync` ricevono le notifiche di `cc04` con un helper Python incorporato

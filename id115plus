@@ -25,6 +25,12 @@
 #   ./id115plus reset --yes                restore factory settings (F1 03 18 01)
 #   ./id115plus raw <hex> [<hex>...]       write raw commands to cc06 (no padding)
 #   ./id115plus read <uuid>                read a characteristic, e.g. cc03 or full UUID
+#   ./id115plus status                     link state as seen by BlueZ and by the controller
+#   ./id115plus keepalive [seconds]        hold the connection, probing every N s (default 10)
+#                                      and reconnecting on failure, until Ctrl+C
+#
+# Every connect, read and write recovers on its own: reconnect, then a forced disconnect,
+# then an adapter power cycle (no sudo), retried up to RETRIES times.
 #
 # Env: MAC (default BA:03:5C:05:4A:12), RETRIES (default 5), HCI (default hci0)
 
@@ -39,20 +45,72 @@ CHAR=org.bluez.GattCharacteristic1
 
 prop() { busctl get-property org.bluez "$DEV" org.bluez.Device1 "$1" 2>/dev/null | awk '{print $2}'; }
 
-# Connect (with retries) and wait until GATT services are resolved.
-connect() {
+log() { echo "$(date +%T) $*" >&2; }
+
+# True when the controller really has a link to the band. bluetoothd can keep reporting
+# Connected/ServicesResolved after the link is gone, and then every GATT call fails with
+# "Not connected" while Disconnect times out.
+linked() {
+  if command -v hcitool >/dev/null; then
+    hcitool -i "$HCI" con 2>/dev/null | grep -qi "$MAC"
+  else
+    [[ $(prop Connected) == true ]]
+  fi
+}
+
+ready() { [[ $(prop ServicesResolved) == true ]] && linked; }
+
+# Reset the link state. Level 1: Disconnect. Level 2: also power cycle the adapter, the only
+# thing that clears a stale connection without sudo (same as bluetoothctl power off/on).
+recover() {
+  local ad=/org/bluez/$HCI
+  log "recover: disconnect"
+  busctl --timeout=10 call org.bluez "$DEV" org.bluez.Device1 Disconnect >/dev/null 2>&1
+  sleep 1
+  if (( $1 >= 2 )) || [[ $(prop Connected) == true ]]; then
+    log "recover: power cycle $HCI"
+    busctl set-property org.bluez "$ad" org.bluez.Adapter1 Powered b false 2>/dev/null
+    sleep 2
+    busctl set-property org.bluez "$ad" org.bluez.Adapter1 Powered b true 2>/dev/null
+    sleep 2
+  fi
+}
+
+# Try to bring the link up, escalating recovery on each failed attempt. Returns 1 on failure.
+try_connect() {
   local r i
-  [[ $(prop ServicesResolved) == true ]] && return 0
+  ready && return 0
   for ((r = 1; r <= RETRIES; r++)); do
+    # attempt 1: plain connect; 2: disconnect first; 3+: power cycle the adapter first
+    (( r > 1 )) && recover $((r - 1))
     busctl --timeout=30 call org.bluez "$DEV" org.bluez.Device1 Connect >/dev/null 2>&1
     for ((i = 0; i < 20; i++)); do
-      [[ $(prop ServicesResolved) == true ]] && return 0
+      ready && { (( r > 1 )) && log "connected (attempt $r)"; return 0; }
       sleep 0.5
     done
-    echo "attempt $r/$RETRIES failed, retrying..." >&2
+    log "attempt $r/$RETRIES failed, retrying..."
   done
-  echo "giving up after $RETRIES attempts" >&2
-  exit 1
+  log "giving up after $RETRIES attempts"
+  return 1
+}
+
+connect() { try_connect || exit 1; }
+
+# Run a GATT call on a characteristic with recovery: on failure reconnect and retry.
+# Usage: gatt <uuid> <method> <signature> <args...>; prints busctl output.
+gatt() {
+  local uuid=$1 r out
+  shift
+  for ((r = 1; r <= RETRIES; r++)); do
+    if try_connect && out=$(busctl --timeout=15 call org.bluez "$(char_path "$uuid")" $CHAR "$@" 2>&1); then
+      echo "$out"; return 0
+    fi
+    log "$uuid $1 failed (${out:-no link}), recovering $r/$RETRIES"
+    # a failed call on a "connected" device means the state is stale: force a reset
+    recover $(( r > 1 ? 2 : 1 ))
+    out=
+  done
+  return 1
 }
 
 # D-Bus path of a characteristic, by short (cc06) or full UUID.
@@ -70,23 +128,20 @@ char_path() {
 
 # Read a characteristic; prints bytes as space-separated decimal.
 read_char() {
-  connect
   local out
-  out=$(busctl call org.bluez "$(char_path "$1")" $CHAR ReadValue 'a{sv}' 0) || exit 1
+  out=$(gatt "$1" ReadValue 'a{sv}' 0) || { echo "read failed: $1" >&2; exit 1; }
   cut -d' ' -f3- <<< "$out"
 }
 
 # Write each hex string as one packet to cc06, waiting for the write response.
 write_cmds() {
-  local path cmd bytes
-  connect
-  path=$(char_path cc06)
+  local cmd bytes
   for cmd in "$@"; do
     cmd=${cmd// /}
     [[ $cmd =~ ^([0-9a-fA-F]{2})+$ ]] || { echo "bad hex: $cmd" >&2; exit 2; }
     bytes=$(printf '%s' "$cmd" | sed 's/../0x& /g')
     # shellcheck disable=SC2086
-    busctl call org.bluez "$path" $CHAR WriteValue 'aya{sv}' $((${#cmd} / 2)) $bytes 1 type s request ||
+    gatt cc06 WriteValue 'aya{sv}' $((${#cmd} / 2)) $bytes 1 type s request >/dev/null ||
       { echo "write failed: $cmd" >&2; exit 1; }
   done
 }
@@ -118,8 +173,20 @@ parse_kv() {
 
 # Subscribe to cc04 notifications and handle them: "live" prints events, "sync" runs the
 # F4 record download handshake. Exits after the given seconds without packets (0 = never).
+# If the link drops, the listener exits with 3 and is restarted after reconnecting.
 listen() {
-  connect
+  local rc
+  while :; do
+    connect
+    listener "$@"
+    rc=$?
+    (( rc == 3 )) || return $rc
+    log "link lost, reconnecting"
+    recover 1
+  done
+}
+
+listener() {
   python3 - "$1" "$DEV" "$2" <<'PY'
 import sys, datetime, dbus, dbus.mainloop.glib
 from gi.repository import GLib
@@ -135,6 +202,7 @@ rt, ctl = char("cc04"), char("cc06")
 loop = GLib.MainLoop()
 timer = None
 base = None
+lost = False
 
 
 def write(*b):
@@ -215,8 +283,17 @@ def changed(iface, props, invalidated):
         sys.stdout.flush()
 
 
+def device_changed(iface, props, invalidated):
+    global lost
+    if props.get("Connected") is False or props.get("ServicesResolved") is False:
+        lost = True
+        loop.quit()
+
+
 bus.add_signal_receiver(changed, "PropertiesChanged", "org.freedesktop.DBus.Properties",
                         "org.bluez", paths["cc04"])
+bus.add_signal_receiver(device_changed, "PropertiesChanged", "org.freedesktop.DBus.Properties",
+                        "org.bluez", dev)
 rt.StartNotify()
 if mode == "sync":
     write(0xF4, 0)
@@ -230,6 +307,7 @@ finally:
         rt.StopNotify()
     except dbus.DBusException:
         pass
+sys.exit(3 if lost else 0)
 PY
 }
 
@@ -354,10 +432,26 @@ case ${1:-} in
     write_cmds f1031801 ;;
   raw)
     shift; write_cmds "$@" ;;
+  status)
+    echo "bluez: connected $(prop Connected)  services $(prop ServicesResolved)  rssi $(prop RSSI)"
+    if linked; then echo "controller: link up"; else echo "controller: no link"; fi ;;
+  keepalive)
+    # probe with a cc02 read; gatt() reconnects and recovers on its own
+    every=${2:-10}
+    while :; do
+      if out=$(gatt cc02 ReadValue 'a{sv}' 0); then
+        [[ ${up:-} == 1 ]] || log "link up"
+        up=1
+      else
+        log "link down, still trying"
+        up=0
+      fi
+      sleep "$every"
+    done ;;
   read)
     [[ $# -eq 2 ]] || { echo "usage: $0 read <uuid>" >&2; exit 2; }
     # shellcheck disable=SC2046
     printf '%02x ' $(read_char "$2"); echo ;;
   *)
-    sed -n '2,30p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+    sed -n '2,36p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
 esac
