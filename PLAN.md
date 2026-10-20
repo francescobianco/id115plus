@@ -102,19 +102,25 @@ in `tools/oss.env` (non versionato). Non sono più valide per la lettura.
 - [ ] (Opzionale, più avanti) riprodurre l'intero handshake ri-caricando un'immagine **identica**
       a quella presente: l'OTA più sicuro possibile. Rinviato: non abbiamo l'immagine ufficiale.
 
-### Fase 3 — Capire la mappa di memoria
-- [ ] Studiare `app-OTA` dell'SDK MS1793: dove stanno bootloader, stack, app; indirizzi,
-      dimensioni, linker script.
-- [ ] Disassemblare l'immagine ufficiale (arm-none-eabi-objdump / Ghidra) per confermare
-      vettori di reset, base dell'app, e se boot+stack sono separati dall'app.
-- [ ] Decidere la partizione *app* come unico bersaglio di scrittura (bootloader intatto).
+### Fase 3 — Capire la mappa di memoria  ✅ (in buona parte; dettagli in docs/firmware-build.md)
+- [x] Studiato `app-OTA` dell'SDK MS1793 → [docs/firmware-build.md](docs/firmware-build.md):
+      SoC MM32 Cortex-M0, flash a `0x08000000`, schema **doppio banco** (Bank A app @`0x08001000`,
+      app linkata a `0x08001010`; Bank B staging OTA), boot copia B→A solo se CRC valido.
+- [x] Scoperta chiave: **CRC errato → immagine rifiutata, firmware attuale intatto** (se vale lo
+      staging anche sul nostro bootloader). Un upload con CRC errato sarebbe quindi sicuro.
+- [ ] **Incognite ancora aperte** (servirebbe un'immagine ufficiale): indirizzo base app esatto
+      del nostro bootloader (candidato `0x08001010`) e **variante CRC32**. Confermare che il
+      nostro bootloader usa davvero lo staging (altrimenti anche un CRC errato è rischioso).
 
-### Fase 4 — Primo firmware custom minimo
-- [ ] Costruire con l'SDK un'app minima che faccia una cosa osservabile e sicura (es. far
-      vibrare il motore, o accendere il display), con lo stesso projId/boot/stack dell'originale.
-- [ ] Generare l'header 16 byte + CRC32 corretto (tool nostro).
-- [ ] Caricarla via il flusso di Fase 2 **solo dopo** aver verificato il ripristino.
-- [ ] Verificare l'avvio; se fallisce, ripristinare l'immagine ufficiale.
+### Fase 4 — Primo firmware custom
+- [ ] 4.1 Toolchain `arm-none-eabi-gcc` + compilare un esempio minimo del SDK (**no flash**).
+- [ ] 4.2 `tools/mkimage.py`: header 16B (`projId=0x2a4b boot=4 stack=2 app=0x6900`) + CRC32
+      (varianti candidate). Offline, nessun dispositivo.
+- [ ] 4.3 Dry-run OTA **sicuro**: upload con CRC volutamente errato, leggere l'esito
+      (`value[1]==3`) — **solo** dopo aver confermato lo staging. Prova il flusso end-to-end
+      senza sostituire il firmware.
+- [ ] 4.4 Primo firmware reale: app minima all'indirizzo giusto, CRC corretto, caricata solo con
+      rete di sicurezza (immagine di ripristino o secondo dispositivo).
 
 ### Fase 5 — Costruzione incrementale del nostro firmware
 - [ ] Portare via via le funzioni (display, sensori, passi, notifiche) sul nostro codice.
