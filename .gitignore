@@ -2,3 +2,4 @@
 .vscode/
 .env
 tools/oss.env
+firmware/build/

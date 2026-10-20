@@ -113,7 +113,7 @@ in `tools/oss.env` (non versionato). Non sono più valide per la lettura.
       nostro bootloader usa davvero lo staging (altrimenti anche un CRC errato è rischioso).
 
 ### Fase 4 — Primo firmware custom
-- [ ] 4.1 Toolchain `arm-none-eabi-gcc` + compilare un esempio minimo del SDK (**no flash**).
+- [x] 4.1 Toolchain `arm-none-eabi-gcc` OK; build GCC in `firmware/` compila un .bin Cortex-M0 valido (vector table @0x08001010) e lo incapsula in immagine OTA. Segnaposto, non flashato.
 - [x] 4.2 `tools/mkimage.py`: header 16B (`projId=0x2a4b boot=4 stack=2 app=0x6900`) + CRC32
       (varianti candidate). Offline, nessun dispositivo.
 - [ ] 4.3 Dry-run OTA **sicuro**: upload con CRC volutamente errato, leggere l'esito
