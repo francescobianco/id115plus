@@ -77,6 +77,19 @@ molto il rischio.
   molto il rischio della Fase 4. Vie alternative da valutare: APK più recente con credenziali
   valide; mirror del firmware; richiesta diretta al produttore.
 
+**Ricerca su GitHub di firmware già estratti (2026-10-20): nessuno per il nostro chip.**
+Tutto il lavoro pubblico sull'ID115 riguarda la variante **Nordic nRF51**, non la nostra Maxscend:
+- `rbaron/fitless` — firmware custom di esempio per ID115, ma su **nRF51** (nRF SDK 12, softdevice
+  s130, build `nrf51422_xxac`, flash via **SWD**/J-Link). Non gira sul nostro MSLM707.
+- `ctz/id115-firmware-dump` — dump del firmware ID115, sempre **nRF51**, via SWD.
+- `donomii/ID115` — solo controllo via BLE, non firmware.
+- `macrogiga/MS1793-SDK`, `MS1793S-SDK`, `MS1892-SDK`, `MS1656-SDK` — gli SDK del nostro
+  produttore (Maxscend/Macrogiga): **questa resta la base per costruire il nostro firmware**.
+
+Ricerche per codice (`mcube-ota`, `MSLM707`, `com.uthink.ring`, `uthink ring`, `MSF0 cc06`,
+`0000fd02 OTA`) non hanno dato dump né immagini per la variante Maxscend. In pratica: **nessuno
+ha pubblicato un firmware/dump per questo chip**; gli unici dump ID115 sono per un chip diverso.
+
 Strumento: `tools/oss.py` (firma OSS V1/V4, list/get). Le credenziali vengono dall'APK e stanno
 in `tools/oss.env` (non versionato). Non sono più valide per la lettura.
 
