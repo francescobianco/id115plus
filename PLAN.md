@@ -132,7 +132,38 @@ in `tools/oss.env` (non versionato). Non sono più valide per la lettura.
 - Un solo braccialetto o due? (secondo = cavia, riduce molto il rischio di Fase 4).
 - Fin dove spingersi sul rischio brick con un unico dispositivo.
 
+## Ripresa — prossima sessione (per domani)
+
+**Dove siamo:** Fasi 0-3 fatte; 4.1 (toolchain+build) e 4.2 (mkimage) fatte. Toolchain
+`arm-none-eabi-gcc` installata e funzionante. La build in `firmware/` produce un `.bin`
+Cortex-M0 valido e lo incapsula in immagine OTA. `src/main.c` è un segnaposto (niente BLE).
+
+**Prossimo passo (sicuro, senza flash):** linkare lo stack BLE del SDK e scrivere una prima app
+reale che fa advertising, verificando che compili e linki pulito. In pratica:
+1. Copiare/collegare in `firmware/` quel che serve dal SDK (scratchpad: `…/sdk/MS1793-SDK`):
+   `Src/lib/mg_BLE_lib_m0.lib` (ELF Cortex-M0, GCC-linkabile), `Src/inc/mg_api.h`, i file BSP e
+   gli header MM32x031. **Nota:** l'SDK è nella scratchpad (non versionato); valutare se
+   ricopiarlo in `firmware/vendor/` o riclonare `macrogiga/MS1793-SDK`.
+2. Partire dall'esempio più semplice che usa `ble_run_interrupt_start` (es. `app-hid-shutter`)
+   come modello di init (clock, `BSP_Init`, `radio_initBle`, `ble_run...`).
+3. Linker: il `.sct` Keil mappa flash `0x08000000` size `0x8000`, RAM `0x20000000` size `0x1000`.
+   Adattare `ld/app.ld` di conseguenza quando si linka davvero contro la lib.
+4. Obiettivo della sessione: un `firmware/build/app.bin` che linka con la radio BLE. **Ancora
+   nessun flash.**
+
+**Nodi aperti prima di flashare davvero:** (a) indirizzo base app esatto + variante CRC32 del
+nostro bootloader — servirebbe un'immagine ufficiale; (b) confermare lo staging del bootloader;
+(c) rete di sicurezza: immagine di ripristino o secondo braccialetto. Vedi "Decisioni aperte".
+
 ## Log
 - 2026-10-20: setup strumenti, reverse OTA, identificato chip, scritti PLAN e docs. Avvio Fase 1.
 - 2026-10-20: Fase 1 bloccata — credenziali OSS dell'APK revocate (403 AccessDenied in V1 e V4).
-  Nessun firmware nell'APK. Prossimo passo sicuro: Fase 2 (lettura OTA dal dispositivo, sola lettura).
+  Nessun firmware nell'APK; ricerca GitHub: dump ID115 solo per il chip Nordic, nessuno per il
+  nostro Maxscend. Gli SDK Macrogiga restano la base.
+- 2026-10-20: Fase 2 — `ota-probe` (sola lettura): la band annuncia `projId=0x2a4b boot=4 stack=2
+  app=0x6900`. Protocollo Maxscend confermato.
+- 2026-10-20: Fase 3 — mappa di memoria dal SDK (doppio banco, app @`0x08001010`); CRC errato =
+  immagine rifiutata (se c'è staging). Incognite: base app esatta, variante CRC32, staging.
+- 2026-10-20: Fase 4.1/4.2 — `tools/mkimage.py` (immagine OTA) + build GCC in `firmware/` che
+  compila un `.bin` Cortex-M0 valido. Toolchain validata end-to-end. Nulla flashato. Push su
+  `origin/main`. Pausa: si riprende dal linkaggio dello stack BLE (vedi "Ripresa").
