@@ -63,16 +63,22 @@ molto il rischio.
 - [x] Decompilazione APK (jadx) e reverse dell'OTA → `docs/ota-protocol.md`.
 - [x] Identificazione chip e SDK pubblici → `docs/chip.md`.
 
-### Fase 1 — Procurarsi l'immagine ufficiale  ⏳ (in corso)
-- [ ] Elencare il bucket `mcube-ota` (GET firmato, `?max-keys=500`).
-- [ ] Scaricare l'immagine del nostro modello (`_60_*_00_86.bin`), inclusa quella in uso.
-- [ ] Salvarla in `firmware/` come riferimento e **copia di ripristino**.
-- [ ] Verificarne l'header (projId/boot/stack/app/codeSize/crc32) contro lo spec.
-- [ ] Capire quale variante CRC32 dà i 4 byte dell'header (riprodurre il CRC dell'immagine
-      reale): ci serve per firmare le nostre immagini.
+### Fase 1 — Procurarsi l'immagine ufficiale  ❌ (bloccata: credenziali revocate)
+- [x] Scritto `tools/oss.py` (firma OSS V1 **e** V4, list/get; credenziali in `tools/oss.env`).
+- [x] Tentato `list` e `get` sul bucket `mcube-ota`.
+- **Esito:** `HTTP 403 AccessDenied` (EC `0003-00000905`) sia con firma **V1** sia con **V4**,
+  sia su `list` sia su `get` di una chiave nota (`force-upgrade/force upgrade.txt`). Due schemi
+  di firma diversi danno lo stesso errore identico → non è un problema di firma: le credenziali
+  estratte dall'APK **non hanno più accesso in lettura** al bucket (policy ristretta/ruotata dal
+  produttore). Possibile anche una restrizione per IP/VPC/Referer lato bucket.
+- [x] Verificato che l'APK **non impacchetta** alcuna immagine firmware (i `.bin` in
+  `assets/<risoluzione>/online/bin/` sono quadranti/immagini, non firmware).
+- **Conseguenza:** non abbiamo un'immagine ufficiale di **ripristino**. Senza SWD, questo alza
+  molto il rischio della Fase 4. Vie alternative da valutare: APK più recente con credenziali
+  valide; mirror del firmware; richiesta diretta al produttore.
 
-Strumento: `tools/oss.py` (firma OSS, list/get). Le credenziali vengono dall'APK; non vanno
-committate in chiaro se il repo diventa pubblico — per ora stanno nel tool con una nota.
+Strumento: `tools/oss.py` (firma OSS V1/V4, list/get). Le credenziali vengono dall'APK e stanno
+in `tools/oss.env` (non versionato). Non sono più valide per la lettura.
 
 ### Fase 2 — Osservare l'OTA dal dispositivo (sola lettura)
 - [ ] Abilitare le notifiche su `fd02` e leggere la versione che la band annuncia, **senza
@@ -108,3 +114,5 @@ committate in chiaro se il repo diventa pubblico — per ora stanno nel tool con
 
 ## Log
 - 2026-10-20: setup strumenti, reverse OTA, identificato chip, scritti PLAN e docs. Avvio Fase 1.
+- 2026-10-20: Fase 1 bloccata — credenziali OSS dell'APK revocate (403 AccessDenied in V1 e V4).
+  Nessun firmware nell'APK. Prossimo passo sicuro: Fase 2 (lettura OTA dal dispositivo, sola lettura).
