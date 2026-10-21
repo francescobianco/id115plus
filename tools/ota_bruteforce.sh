@@ -26,13 +26,14 @@ HERE="$(cd "$(dirname "$0")/.." && pwd)"
 DEV="BA:03:5C:05:4A:12"
 STOCK_VER="60.69.00.86"
 
-code=""; start=0; adv=""; ok=0; only=""
+code=""; start=0; adv=""; ok=0; only=""; skip=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --i-have-valid-code) ok=1 ;;
     --start) start="$2"; shift ;;
     --adv-name) adv="$2"; shift ;;
     --only) only=",$2,"; shift ;;   # e.g. --only 0,1,11,20,21,31 : try ONLY these indices
+    --skip) skip=",$2,"; shift ;;    # e.g. --skip 0,1,21,31 : skip these indices (already ruled out)
     -*) echo "unknown opt $1" >&2; exit 2 ;;
     *) code="$1" ;;
   esac; shift
@@ -73,28 +74,47 @@ for img in "${imgs[@]}"; do
   idx="$(basename "$img" | cut -d_ -f1)"
   [ "$((10#$idx))" -lt "$start" ] && continue
   [ -n "$only" ] && case "$only" in *",$((10#$idx)),"*) : ;; *) continue ;; esac
+  [ -n "$skip" ] && case "$skip" in *",$((10#$idx)),"*) continue ;; esac
   label="$(basename "$img" .bin | cut -d_ -f2-)"
   echo
   echo "=== [$idx] $label ==="
-  cycle_adapter
-  timeout 170 "$HERE/id115plus" ota-flash "$img" --commit --yes 2>&1 | sed 's/^/    /'
-  echo "    (waiting for reboot...)"; sleep 6
-  # Detect by ADVERTISED NAME (robust on a weak link). Stock name = rejected; ID115DIY = accepted;
-  # not seen at all = retry once, then stop for a manual check (brick or just RF).
+  # A candidate is only TESTED if the device confirmed the full image with READY(0x55); on this
+  # weak link a commit can fail to even connect/stream. Retry until READY is seen (up to TRIES),
+  # so a link failure is never mistaken for a CRC rejection.
+  tested=0
+  for t in $(seq 1 "${TRIES:-5}"); do
+    cycle_adapter
+    out="$(timeout 170 "$HERE/id115plus" ota-flash "$img" --commit --yes 2>&1)"
+    echo "$out" | sed 's/^/    /'
+    if echo "$out" | grep -qiE "READY \(0x55\)|ready for CRC"; then tested=1; break; fi
+    echo "    (attempt $t: no READY — link failure, not a CRC verdict; retrying)"
+  done
+  if [ "$tested" != 1 ]; then
+    echo "??? [$idx] $label — could NOT deliver the image after ${TRIES:-5} tries (link). UNTESTED."
+    echo "$idx" >> "$tmp/untested.txt"
+    continue
+  fi
+  echo "    (image verified by device; waiting for reboot...)"; sleep 6
+  # Detect by ADVERTISED NAME. Stock = rejected; ID115DIY = accepted; not seen = manual check.
   nm="$(adv_name)"; [ -z "$nm" ] && { echo "    (not seen, rescanning...)"; nm="$(adv_name)"; }
   echo "    advertised name: ${nm:-<not seen>}"
   if echo "$nm" | grep -qi ID115DIY; then
     echo "!!! [$idx] $label — advertising as ID115DIY. LIKELY ACCEPTED — our firmware is running! Stopping."
     exit 0
   elif echo "$nm" | grep -qi "$STOCK_NAME"; then
-    echo "    [$idx] REJECTED (stock $STOCK_NAME advertising). Next."
+    echo "    [$idx] REJECTED (CRC verified wrong; stock $STOCK_NAME advertising). Next."
   else
-    echo "!!! [$idx] $label — device not advertising a known name after 2 scans."
-    echo "!!! Could be an accept with a dead image (brick), a different adv name, or just RF."
-    echo "!!! Stopping so you can verify the band by hand before any further flashing."
+    echo "!!! [$idx] $label — image was verified by the device, then it is not advertising a known"
+    echo "!!! name after 2 scans. Could be an ACCEPT with a dead image (brick) or RF. STOPPING for"
+    echo "!!! a manual check of the band before any further flashing."
     exit 0
   fi
 done
 echo
-echo "=== all candidates REJECTED. The checksum algorithm/range is outside the tried set,"
-echo "    or the image format (load addr/entry/header) is wrong. Next: SWD dump of the cavia. ==="
+if [ -s "$tmp/untested.txt" ]; then
+  echo "=== done. Cleanly REJECTED where tested. UNTESTED (link failed, re-run these): "
+  echo "    --only $(paste -sd, "$tmp/untested.txt")"
+else
+  echo "=== all candidates TESTED and REJECTED. The checksum algorithm/range is outside the tried"
+  echo "    set, or the image format (load addr/entry/header) is wrong. Next: SWD dump of the cavia. ==="
+fi
