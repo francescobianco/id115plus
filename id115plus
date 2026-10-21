@@ -471,8 +471,10 @@ def send_cmd02():
         print(f"{now()}   arrive once data starts, which handshake mode never does.)")
         GLib.timeout_add_seconds(4, loop.quit)
         return
-    # dry-run / commit: start the data phase with the first chunk, then stream on ready
-    send_chunk()
+    # dry-run / commit: stream the code immediately, paced. The stock app streams on write-acks,
+    # NOT gated on the device's READY notify; READY (mxdRecv) is only required before the CRC.
+    state["grace"] = 0
+    GLib.timeout_add(PACE_MS, stream_tick)
 
 def send_chunk():
     i = state["idx"]
@@ -486,12 +488,17 @@ def send_chunk():
     return True
 
 def stream_tick():
-    if not state["ready"]:
-        return True  # keep waiting for the device's go
     if state["idx"] < len(code):
         send_chunk()
         return True
+    # all code sent; the final CRC should follow the device's READY (mxdRecv). Wait briefly for
+    # it, but on a lossy link send the CRC anyway so the test still reaches its verdict.
+    if not state["ready"] and state.get("grace", 0) < 250:
+        state["grace"] = state.get("grace", 0) + 1
+        return True
     if not state["sent03"]:
+        if not state["ready"]:
+            print(f"{now()}  WARNING: no READY(0x55) seen; sending CRC anyway")
         send_cmd03()
     return False  # stop the timer
 
@@ -522,8 +529,6 @@ def on_notify(iface, props, inv):
     elif len(v) >= 3 and v[1] == 2 and v[2] == 0x55:
         print(f"{now()}     device READY (0x55): accepts our version, ready for data")
         state["ready"] = True
-        if mode != "handshake" and not state["sent03"]:
-            GLib.timeout_add(PACE_MS, stream_tick)
     elif len(v) >= 2 and v[1] == 3:
         # CRC verdict from the device. The stock app ignores value[2], so its exact meaning is
         # unknown: record the raw bytes and let the runbook interpret (dry-run expects a reject).
@@ -546,7 +551,7 @@ for attempt in range(1, 7):
 else:
     sys.exit("could not enable fd02 notifications (link too weak?) — bring the band closer")
 print(f"{now()}  notify enabled on fd02; waiting for device version announcement...")
-GLib.timeout_add_seconds(45, loop.quit)  # overall safety timeout
+GLib.timeout_add_seconds(90, loop.quit)  # overall safety timeout (streaming + grace)
 try:
     loop.run()
 finally:
