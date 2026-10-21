@@ -223,3 +223,44 @@ immagine di riferimento). Nota positiva: la protezione d'integrità del bootload
 - Identificazione SoC Maxscend: **mancante** (blocco principale per il commit).
 - Staging bootloader: **da testare** col dry-run.
 - Rete di sicurezza: **assente** (seconda unità in valutazione).
+
+## Aggiornamento 2026-10-21 (sera): chip DA14585, oracolo assente, OSS morto, piano brute-force
+
+Correzione d'architettura: il SoC è un **Dialog DA14585** (ARM Cortex-M0, esegue da SysRAM, no
+flash interna) — vedi [chip.md](chip.md). Marking confermato sull'unità target: `05PUN2 1924`
+(house-code del package WLCSP-34, coerente col `DA14585` letto in chiaro su un'unità QFN gemella;
+board `069-02g008752a`). Quindi il "CRC = XMODEM" dedotto dal bootloader del SDK **MM32/Macrogiga**
+NON è affidabile qui.
+
+**Nessun oracolo CRC.** Dry-run con immagine minuscola nota (256 byte, `tools/mkimage.py`) + `cmd03`
+a CRC errato → il device **rifiuta in silenzio**: non manda alcun frame di verdetto né il CRC
+calcolato. Handshake perfetto fino a `READY 0x55`, poi niente sul CRC errato. Il device dà solo un
+segnale **binario accetta/rifiuta** → l'algoritmo non è estraibile per via software da qui.
+(Device aperto sul banco, link ora stabile; 6° tentativo non distruttivo, sempre intatto.)
+
+**Immagine ufficiale da OSS: impossibile.** Bucket `mcube-ota` → `403 AccessDenied` uniforme su
+`List` e `GET` (chiavi `LTAIS67...` dell'APK **revocate**). L'app non costruisce la chiave: lista
+tutto il bucket e filtra i `.bin` (`update/Aliyun.java`), quindi senza `List` manca anche il nome.
+E la `20.36.61 (build 473, lug 2024)` che abbiamo è l'**ultima** versione (app rimossa dal Play
+Store mag 2025): **non esistono chiavi nuove**. Via chiusa per sempre.
+
+### Piano scelto: codice valido + brute-force del checksum (quasi a rischio zero)
+
+Intuizione chiave: il rischio brick del commit viene **solo** dall'accoppiata *CRC corretto + codice
+non eseguibile*. Con **codice DA14585 davvero valido** (dal Dialog SDK6), provare i candidati CRC
+diventa quasi sicuro — CRC sbagliato → rifiuto/intatto; CRC giusto → **gira il nostro codice**.
+Rischio residuo: sbagliare il **formato immagine** (load address/entry/significato dei campi header
+per il bootloader del vendor), che senza immagine di riferimento è indovinato.
+
+Strumenti pronti (testati a secco):
+- `tools/crc_candidates.py <code.bin>` — enumera 60 candidati (20 algoritmi CRC16/CRC32/sum × 3
+  range: `code`, `hdr+code`, `code+size`); `--emit DIR` scrive un'immagine OTA per candidato.
+- `tools/ota_bruteforce.sh <app.bin> --i-have-valid-code [--start N] [--adv-name NOME]` — prova i
+  candidati in sequenza via `ota-flash --commit`, con power-cycle dell'adattatore + riscoperta tra
+  un tentativo e l'altro, e **si ferma al primo esito non-rifiutato** per verifica manuale. Rifiuta
+  di partire senza `--i-have-valid-code` (guardia anti-brick).
+
+**Prerequisito:** `firmware-da14585/` compilato contro il **DA145xx SDK6** (da scaricare da Renesas)
+in un'app di advertising minima e valida. Finché non gira codice valido, NON lanciare il brute-force.
+Se tutti i 60 candidati vengono rifiutati → algoritmo/range fuori set, o formato immagine errato →
+resta il **dump SWD della cavia** come sblocco robusto.

@@ -1,0 +1,93 @@
+#!/usr/bin/env bash
+# Brute-force the MSLM707 vendor OTA checksum with a VALID DA14585 image.
+#
+# Rationale (docs/ota-flash-runbook.md "brute-force"): the device verifies a 4-byte checksum at
+# header off 12..15 but exposes no computed value (a wrong value is rejected SILENTLY and the
+# device reboots onto the intact stock firmware — confirmed non-destructive). We don't know the
+# algorithm/range, so we try every candidate (tools/crc_candidates.py). A wrong candidate is
+# safely rejected; the RIGHT one is accepted and the device reboots onto OUR code.
+#
+# !!! SAFETY !!!  This is only near-safe with GENUINELY RUNNABLE code. A correct checksum paired
+# with code that does not run (wrong architecture / wrong image format / wrong load address) can
+# brick the device, because the bootloader will have committed a valid-but-dead image. Do NOT run
+# this with the placeholder build or any image whose format for the vendor bootloader is unproven.
+# Confirm with --i-have-valid-code.
+#
+# Usage:
+#   tools/ota_bruteforce.sh <app.bin> --i-have-valid-code [--start N] [--adv-name NAME]
+#     <app.bin>   raw DA14585 code (NOT an OTA image; header is added per candidate)
+#     --start N   resume from candidate index N (default 0)
+#     --adv-name  our firmware's advertising name, used to positively detect an accept
+#
+# Between attempts it power-cycles the BT adapter and rescans (per the project's field notes on
+# the flaky link). It STOPS at the first non-rejected result for you to verify the band by hand.
+set -u
+HERE="$(cd "$(dirname "$0")/.." && pwd)"
+DEV="BA:03:5C:05:4A:12"
+STOCK_VER="60.69.00.86"
+
+code=""; start=0; adv=""; ok=0
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --i-have-valid-code) ok=1 ;;
+    --start) start="$2"; shift ;;
+    --adv-name) adv="$2"; shift ;;
+    -*) echo "unknown opt $1" >&2; exit 2 ;;
+    *) code="$1" ;;
+  esac; shift
+done
+[ -n "$code" ] && [ -f "$code" ] || { echo "usage: $0 <app.bin> --i-have-valid-code [--start N] [--adv-name NAME]" >&2; exit 2; }
+if [ "$ok" != 1 ]; then
+  echo "REFUSING: pass --i-have-valid-code to confirm <app.bin> is a real, runnable DA14585 build." >&2
+  echo "A correct checksum with non-runnable code can brick the device (see this script's header)." >&2
+  exit 3
+fi
+
+cycle_adapter() {  # power-cycle hci0 and rescan so the band is reachable again after a reboot
+  busctl set-property org.bluez /org/bluez/hci0 org.bluez.Adapter1 Powered b false >/dev/null 2>&1
+  sleep 2
+  busctl set-property org.bluez /org/bluez/hci0 org.bluez.Adapter1 Powered b true  >/dev/null 2>&1
+  sleep 2
+  timeout 14 bluetoothctl --timeout 12 scan on >/dev/null 2>&1 || true
+}
+
+reads_stock() {  # 0 = stock firmware still running (REJECTED); 1 = not stock (POSSIBLE ACCEPT)
+  local out
+  out="$(timeout 30 "$HERE/id115plus" info 2>/dev/null)"
+  echo "    info: ${out:-<no response>}"
+  echo "$out" | grep -q "$STOCK_VER" && return 0 || return 1
+}
+
+tmp="$(mktemp -d)"
+trap 'rm -rf "$tmp"' EXIT
+python3 "$HERE/tools/crc_candidates.py" "$code" --emit "$tmp" >/dev/null || exit 1
+mapfile -t imgs < <(ls -1 "$tmp"/*.bin | sort)
+echo "=== brute-force: ${#imgs[@]} candidates, code=$code, starting at index $start ==="
+[ -n "$adv" ] && echo "    accept-detect: stock=$STOCK_VER OR advertising name '$adv'"
+
+for img in "${imgs[@]}"; do
+  idx="$(basename "$img" | cut -d_ -f1)"
+  [ "$((10#$idx))" -lt "$start" ] && continue
+  label="$(basename "$img" .bin | cut -d_ -f2-)"
+  echo
+  echo "=== [$idx] $label ==="
+  cycle_adapter
+  timeout 140 "$HERE/id115plus" ota-flash "$img" --commit --yes 2>&1 | sed 's/^/    /'
+  echo "    (waiting for reboot...)"; sleep 6
+  cycle_adapter
+  if [ -n "$adv" ] && timeout 16 bluetoothctl --timeout 14 scan on 2>/dev/null | grep -qi "$adv"; then
+    echo "!!! [$idx] $label — advertising name '$adv' SEEN. LIKELY ACCEPTED. Stopping. Check the band."
+    exit 0
+  fi
+  if reads_stock; then
+    echo "    [$idx] REJECTED (stock firmware intact). Next."
+  else
+    echo "!!! [$idx] $label — device NO LONGER reports stock $STOCK_VER."
+    echo "!!! POSSIBLE ACCEPT (our code may be running) OR a transient link failure."
+    echo "!!! Stopping so you can verify the band by hand before any further flashing."
+    exit 0
+  fi
+done
+echo
+echo "=== all candidates REJECTED. The checksum algorithm/range is outside the tried set,"
+echo "    or the image format (load addr/entry/header) is wrong. Next: SWD dump of the cavia. ==="

@@ -5,3 +5,6 @@ tools/oss.env
 firmware/build/
 firmware/vendor/MS1793-SDK
 firmware-da14585/build/
+
+# Dialog DA145xx SDK6 (not redistributable — download from Renesas)
+firmware-da14585/vendor/
