@@ -8,6 +8,11 @@ dispositivo ([ota-protocol.md](ota-protocol.md), [device-ota-params.md](device-o
 - MM32 (MindMotion, clone STM32) con core **ARM Cortex-M0**. Flash mappata a `0x08000000`.
 - Lo stack radio BLE è una **libreria binaria** precompilata del SDK (`mg_api.h`): non si
   ricompila, si linka. Noi scriviamo solo l'applicazione sopra.
+- **Linkaggio GCC verificato (2026-10-21).** `mg_BLE_lib_m0.lib` è un archivio `ar` di oggetti
+  ELF Cortex-M0 con ABI EABI: `arm-none-eabi-gcc` la linka senza Keil. Un'app di solo advertising
+  (`radio_initBle` + `ble_set_adv_data` + `ble_run`) linka **senza simboli irrisolti**; l'archivio
+  tira dentro solo gli oggetti usati, quindi la tabella GATT (`AttCharList`, callback server…) non
+  va fornita. Build riproducibile in `firmware/` (`make fetch && make && make image`). Nessun flash.
 
 ## Periferiche hardware
 

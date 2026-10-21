@@ -3,3 +3,4 @@
 .env
 tools/oss.env
 firmware/build/
+firmware/vendor/MS1793-SDK
