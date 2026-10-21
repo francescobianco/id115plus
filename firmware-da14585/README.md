@@ -1,61 +1,70 @@
-# firmware-da14585/ — firmware per il chip reale (Dialog DA14585, ARM Cortex-M0)
+# firmware-da14585/ — firmware BLE per il chip reale (Dialog DA14585)
 
-Ricostruzione del firmware sull'**architettura giusta**. Il SoC del braccialetto è un
-**Dialog/Renesas DA14585** (vedi [../docs/chip.md](../docs/chip.md)), non l'MM32/Macrogiga su
-cui era basato `../firmware/` (ora superato).
+Build **GCC** di un'app BLE di advertising per il braccialetto, linkata contro il **Dialog
+DA145xx SDK 6.0.24.1464**. Il SoC è un **Dialog/Renesas DA14585** (ARM Cortex-M0, esegue da
+SysRAM, no flash interna) — vedi [../docs/chip.md](../docs/chip.md).
 
-## Stato: scheletro + validazione toolchain
+## Stato: build reale che linka (advertising `ID115DIY`)
 
-`make` produce un'immagine RAM-resident Cortex-M0 valida con la **memory-map del DA14585**
-(vector table alla base SysRAM `0x07FC0000`, SP `0x07FD8000`). È un **segnaposto senza BLE**,
-serve a confermare toolchain + mappa. **Nulla da flashare.**
+`make` produce un'immagine RAM-resident completamente linkata (**nessun simbolo irrisolto**),
+che pubblicizza sotto il nome **`ID115DIY`**. **Niente viene ancora flashato.**
 
 ```shell
-make          # -> build/app.elf, build/app.bin (segnaposto, no BLE)
+make                      # -> build/app.elf, build/app.bin
+make SDK_PATH=/percorso/al/DA145xx_SDK/6.0.24.1464
 make clean
 ```
 
-## Memory map (DA14585)
+Layout verificato (`arm-none-eabi-objdump -h`, la mappa è quella canonica del SDK):
 
-| Regione | Indirizzo | Note |
-|---|---|---|
-| SysRAM1 | `0x07FC0000`–`0x07FC7FFF` (32K) | il codice gira da qui; vector table all'inizio |
-| SysRAM2 | `0x07FC8000`–`0x07FCBFFF` (16K) | |
-| SysRAM3 | `0x07FCC000`–`0x07FCFFFF` (16K) | (SysRAM totale 96K) |
-| SPI flash esterna | — | OTP/SPI NOR: il boot ROM copia l'immagine in SysRAM e salta |
+| Cosa | Valore |
+|---|---|
+| Base immagine (vettori) | `0x07FC0000` (SysRAM) |
+| `patch_table` (patch simboli ROM) | offset `0x0C0` |
+| Entry (`Reset_Handler`, Thumb) | `0x07FC0511` |
+| SP iniziale (`__StackTop`, calcolato dal linker) | entro SysRAM |
+| `app.bin` | ~23 KB |
 
-**Niente flash interna**: il DA14585 esegue da RAM. Il modello `0x08000000` di `../firmware/`
-(MM32) non si applica.
+> Nota: lo SP non è un indirizzo fisso tipo `0x07FD8000`; nella mappa del SDK lo stack sta
+> **dopo** codice e RAM ritenuta, e l'indirizzo lo calcola il linker. È corretto così.
 
-## Per un firmware BLE reale: serve il Dialog SDK6
+## Come è costruito (serve il SDK, non ridistribuibile)
 
-Il DA14585 è tra i SoC BLE più documentati, ma lo stack BLE **non è ridistribuibile**: va preso
-il **DA145xx SDK 6.0.24.1464** (o 6.0.22.1401) dal sito Renesas (registrazione gratuita). Un'app
-di advertising si compila con `arm-none-eabi-gcc` linkando lo stack del SDK (`rwip`, `ke`,
-`gapc`, `gapm`, profili) + il proprio GATT.
+Lo stack BLE del DA14585 **non è ridistribuibile**: scarica il **DA145xx SDK 6.0.24.1464** da
+Renesas e punta `SDK_PATH` alla sua radice (la cartella con `sdk/` e `projects/`). Il SDK fornisce
+tutti i pezzi GCC che usiamo **per path** (mai copiati nel repo):
 
-**Template di riferimento (GCC, bare-metal):** `schrab/DA14585-e-ink-display`
-(https://github.com/schrab/DA14585-e-ink-display) — Makefile `make SDK_PATH=.../6.0.24.1464 all`,
-linker SysRAM, e un `mkimage.py` che genera l'**header immagine standard Dialog** (64 byte, sig
-`0x7051`, validflag `0xAA`, **CRC = zlib.crc32** sul codice). Da adattare al nostro caso.
+- libreria radio prebuilt `sdk/platform/system_library/output/Keil_5/da14585_586.lib`;
+- startup GCC `sdk/platform/arch/boot/GCC/startup_DA14585_586.S` + `ivtable_DA14585_586.S`;
+- template linker GCC `sdk/common_project_files/ldscripts/ldscript_DA14585_586.lds.S`
+  (+ `mem_DA14585_586.lds`) e i simboli ROM `.../misc/da14585_symbols.lds`
+  (il `Makefile` lo preprocessa in `build/ldscript.ld`);
+- i ~55 sorgenti core del SDK (rwip, ke, gap, app_easy, profili…) compilati da `SDK_PATH`.
 
-## Nodo OTA: il checksum del vendor NON è l'header standard Dialog
+### File del repo vs file locali
 
-Il nostro device **non** usa l'header SUOTA standard (64B, CRC32): usa un **OTA custom** su
-`fd00/fd01/fd02` con header a **16 byte** (projId/boot/stack/app/codeSize/crc) — un **secondary
-bootloader del vendor** (uThink/Yoho). Abbiamo provato zlib-CRC32 e varianti: **rifiutate** (vedi
-[../docs/ota-flash-runbook.md](../docs/ota-flash-runbook.md)). Per inchiodare il checksum servirà:
-- un'**immagine ufficiale** `_60_XX_00_86.bin` (si calcolano i candidati sul suo codice), oppure
-- un **dump via SWD** del secondary bootloader del vendor dalla **cavia** (si legge l'algoritmo),
-  usando strumenti tipo quelli del progetto schrab (`dump_spi_flash.py`, `extract_partitions.py`).
+- **Nostri, versionati:** `Makefile`, questo `README.md` (più gli strumenti OTA in `../tools/`).
+- **Locali, NON versionati** (`.gitignore`): `config/` e `app/` — al momento sono l'esempio
+  **`ble_app_barebone`** del SDK con il nome device impostato a `ID115DIY`; `build/`; `vendor/`.
+  Sono materiale derivato dal SDK (non ridistribuibile), quindi restano fuori da git. Il prossimo
+  passo è sostituire `app/` con sorgenti **nostri** minimali.
 
-Il **transport** OTA `../id115plus ota-flash` (staging + verifica, non bricka) resta valido: una
-volta nota l'immagine giusta (codice per SysRAM DA14585 + checksum del vendor), si carica da lì.
+## Come si collega all'OTA del vendor
+
+Il bootloader secondario del vendor carica l'immagine in SysRAM a `0x07FC0000` ed esegue
+(`CFG_CODE_LOCATION_EXT`), che è esattamente ciò che questo build produce. Il payload "code" per
+l'OTA è il `build/app.bin` grezzo (vettori a `0x07FC0000` in testa). L'immagine OTA si confeziona
+con l'header a 16 byte del vendor via `../tools/mkimage.py` / `../tools/crc_candidates.py`, e si
+prova col brute-force del checksum `../tools/ota_bruteforce.sh` (vedi
+[../docs/ota-flash-runbook.md](../docs/ota-flash-runbook.md)).
+
+**Rischio residuo noto:** non è ancora provato che il vendor si aspetti *esattamente* il `.bin`
+grezzo caricato a `0x07FC0000` (offset/header interni al payload). Senza un'immagine di riferimento
+o un dump SWD resta un'ipotesi: è l'unica incognita che può ancora causare un brick quando un
+checksum verrà accettato con codice valido ma formato errato.
 
 ## Da fare
 
-1. Procurare il DA145xx SDK 6.x (Renesas) → `make SDK_PATH=...`.
-2. App minima di advertising col nostro nome, linkata allo stack BLE del SDK.
-3. Determinare il formato immagine + checksum del secondary bootloader del vendor (immagine
-   ufficiale o dump SWD della cavia).
-4. Caricare via il nostro transport OTA.
+1. Sostituire `app/` con un'app di advertising **nostra** minimale (sorgenti originali).
+2. Confezionare `build/app.bin` con l'header del vendor e lanciare il brute-force del checksum.
+3. Se tutti i candidati sono rifiutati → dump SWD della cavia per formato + algoritmo.

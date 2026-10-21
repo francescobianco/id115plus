@@ -8,3 +8,6 @@ firmware-da14585/build/
 
 # Dialog DA145xx SDK6 (not redistributable — download from Renesas)
 firmware-da14585/vendor/
+# SDK-derived app sources/config (ble_app_barebone, name=ID115DIY) — not redistributable
+firmware-da14585/config/
+firmware-da14585/app/
