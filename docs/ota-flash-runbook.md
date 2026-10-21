@@ -145,6 +145,20 @@ variante giusta.
   recuperabile. (Il rifiuto a CRC errato con stream completo resta ancora da verificare.)
 - **Link debole = ostacolo pratico.** A -84 dBm `StartNotify` va in timeout. Il tool ora ritenta
   `StartNotify` (6×), ma per lo streaming vero **il braccialetto va attaccato all'adattatore**.
+- **✅ STAGING CONFERMATO (2026-10-21).** Dry-run completo: inviati **tutti i 12966 byte** di
+  codice + `cmd03` con **CRC32 volutamente errato** (`db909fc4`→`24909fc4`). Il device ha
+  **rifiutato** l'immagine e si è **riavviato sul firmware originale `60.69.00.86` intatto**
+  (verificato). → Il bootloader fa staging: riceve l'intera immagine, verifica il CRC32, e se non
+  torna **non tocca l'app in esecuzione**. Un'immagine con CRC errato/incompatibile **non bricka**.
+  (Nessun notify di "CRC RESULT" osservato — perso nel rumore RF o reboot immediato; la prova è
+  comportamentale: device vivo e invariato.)
+
+  **Rischio residuo per il --commit:** lo staging protegge dai CRC errati, **non** da un'immagine
+  con CRC *corretto* ma codice che non gira (es. architettura sbagliata: la nostra è MM32/ARM, SoC
+  non confermato). In quel caso il device potrebbe accettare e riavviarsi su codice morto → brick,
+  salvo un watchdog/rollback secondario che non conosciamo. Quindi: **CRC errato = sicuro
+  (dimostrato); commit di immagine per il chip giusto = ancora da de-rischiare** (identificare il
+  SoC; o fare il primo commit sulla cavia).
 
 ## Stato attuale dei prerequisiti (2026-10-21)
 

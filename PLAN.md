@@ -126,13 +126,14 @@ in `tools/oss.env` (non versionato). Non sono più valide per la lettura.
       con 3 livelli: `handshake` (default, nessuna scrittura in flash), `--dry-run --yes` (CRC
       errato → test staging), `--commit --yes` (flash reale). Validato a secco (bash+python). Non
       ancora eseguito sul device (attesa del via del proprietario).
-- [~] 4.3b Dry-run OTA sul device (2026-10-21): handshake OK (device accetta la nostra versione).
-      Un dry-run interrotto su `StartNotify` (link debole) ha fatto mostrare "Upgrade" al device,
-      poi **timeout e riavvio sul firmware originale intatto** → entrare in upgrade **non è
-      distruttivo**. Resta da completare lo stream con CRC errato (serve link stabile: braccialetto
-      attaccato all'adattatore; `StartNotify` ora ritenta 6×).
-- [ ] 4.4 Commit reale: **solo** dopo aver identificato il SoC e con rete di sicurezza (seconda
-      unità o immagine di ripristino). Procedura in docs/ota-flash-runbook.md.
+- [x] 4.3b **Dry-run OTA completato — STAGING CONFERMATO (2026-10-21).** Inviati tutti i 12966 byte
+      + `cmd03` con CRC32 errato: il device ha **rifiutato** e si è riavviato su `60.69.00.86`
+      intatto. Il bootloader fa staging e verifica il CRC prima di committare → un'immagine a CRC
+      errato/incompatibile **non bricka**. (Transport OTA end-to-end funzionante.)
+- [ ] 4.4 Commit reale: lo staging protegge dai CRC errati, **non** da un'immagine a CRC corretto
+      ma codice che non gira (architettura sbagliata). Quindi prima: identificare il SoC Maxscend
+      reale (la base MM32/ARM non è confermata) **oppure** fare il primo commit sulla cavia.
+      Procedura in docs/ota-flash-runbook.md.
 
 ### Fase 5 — Costruzione incrementale del nostro firmware
 - [x] **Linkaggio stack BLE OK (2026-10-21).** Build GCC in `firmware/` che compila l'esempio di
