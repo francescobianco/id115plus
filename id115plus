@@ -27,6 +27,11 @@
 #   ./id115plus read <uuid>                read a characteristic, e.g. cc03 or full UUID
 #   ./id115plus ota-probe [seconds]        read-only: enable notify on fd02 and print what the
 #                                      band announces over the Maxscend OTA channel (no writes)
+#   ./id115plus ota-flash <img> [opts]     flash a firmware OTA image over fd00/fd01/fd02.
+#                                      default = handshake only (writes NOTHING to flash);
+#                                      --dry-run = stream with a wrong crc32 (device rejects;
+#                                      needs --yes); --commit --yes = the real flash (can brick).
+#                                      See: ./id115plus ota-flash --help
 #   ./id115plus status                     link state as seen by BlueZ and by the controller
 #   ./id115plus keepalive [seconds]        hold the connection, probing every N s (default 10)
 #                                      and reconnecting on failure, until Ctrl+C
@@ -378,6 +383,169 @@ finally:
 PY
 }
 
+# Maxscend OTA firmware flash (fd00/fd01/fd02). Drives the state machine reverse-engineered in
+# docs/ota-protocol.md. THREE safety levels, chosen by mode:
+#   handshake  (default) version read + cmd 01 + cmd 02 only. NO bytes on fd01, NO cmd 03.
+#              Writes NOTHING to flash: a pure compatibility probe. Cannot brick.
+#   dry-run    full stream but cmd 03 carries a DELIBERATELY WRONG crc32 -> the device must
+#              reject at commit, leaving the running firmware intact IF the bootloader stages
+#              (see docs/ota-flash-runbook.md: this is the staging test; needs --yes).
+#   commit     the real flash: valid crc32, device verifies and reboots onto our image.
+#              Needs --yes. THIS is the one that can brick. Do it only on the owner's go.
+ota_flash() {
+  local image=$1 mode=$2 yes=$3
+  [[ -f $image ]] || { echo "image not found: $image" >&2; exit 2; }
+  if [[ $mode != handshake && $yes != --yes ]]; then
+    echo "mode '$mode' writes to the device; refusing without --yes (see: $0 ota-flash --help)" >&2
+    exit 2
+  fi
+  connect
+  python3 - "$DEV" "$image" "$mode" <<'PY'
+import sys, time, datetime, dbus, dbus.mainloop.glib
+from gi.repository import GLib
+
+dev, image_path, mode = sys.argv[1], sys.argv[2], sys.argv[3]
+CHUNK = 20            # fd01 payload per write (ATT MTU 23 - 3), as the app uses
+PACE_MS = 12          # delay between data chunks (write-without-response has no flow control)
+
+with open(image_path, "rb") as f:
+    img = f.read()
+if len(img) < 16:
+    sys.exit("image too short: no 16-byte header")
+hdr, code = img[:16], img[16:]
+projId  = hdr[0] | hdr[1] << 8
+f_boot, f_stack = hdr[2], hdr[3]
+f_app   = hdr[4] | hdr[5] << 8
+f_appStack, f_appBoot = hdr[6], hdr[7]
+codeSize = int.from_bytes(hdr[8:12], "little")
+crc32    = hdr[12:16]
+
+def now(): return datetime.datetime.now().strftime("%H:%M:%S")
+print(f"{now()}  image: {image_path}")
+print(f"         header projId=0x{projId:04x} boot={f_boot} stack={f_stack} app=0x{f_app:04x} "
+      f"appStack={f_appStack} appBoot={f_appBoot} codeSize={codeSize} crc32={crc32.hex()}")
+print(f"         code bytes present={len(code)} (header says codeSize={codeSize})")
+if len(code) != codeSize:
+    print(f"{now()}  WARNING: code length {len(code)} != header codeSize {codeSize}")
+print(f"{now()}  MODE: {mode}")
+
+dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
+bus = dbus.SystemBus()
+objs = dbus.Interface(bus.get_object("org.bluez", "/"),
+                      "org.freedesktop.DBus.ObjectManager").GetManagedObjects()
+paths = {str(i["org.bluez.GattCharacteristic1"]["UUID"])[4:8]: p for p, i in objs.items()
+         if p.startswith(dev + "/") and "org.bluez.GattCharacteristic1" in i}
+for u in ("fd01", "fd02"):
+    if u not in paths:
+        sys.exit(f"{u} not found: this is not a Maxscend-OTA device")
+fd01 = dbus.Interface(bus.get_object("org.bluez", paths["fd01"]), "org.bluez.GattCharacteristic1")
+fd02 = dbus.Interface(bus.get_object("org.bluez", paths["fd02"]), "org.bluez.GattCharacteristic1")
+loop = GLib.MainLoop()
+
+def wr(ch, *b):
+    ch.WriteValue(dbus.Array([dbus.Byte(x) for x in b], signature="y"), {"type": "command"})
+
+def wrbytes(ch, bs):
+    ch.WriteValue(dbus.Array([dbus.Byte(x) for x in bs], signature="y"), {"type": "command"})
+
+state = {"ver": None, "sent01": False, "sent02": False, "ready": False,
+         "idx": 0, "sent03": False, "done": False}
+
+def send_cmd01():
+    v = state["ver"]
+    # app byte order: 01 projId_lo projId_hi devBoot devStack app_lo app_hi devAppStack devAppBoot
+    pkt = [0x01, projId & 0xff, projId >> 8, v["boot"], v["stack"],
+           f_app & 0xff, f_app >> 8, v["appStack"], v["appBoot"]]
+    wr(fd02, *pkt)
+    state["sent01"] = True
+    print(f"{now()}  -> fd02 cmd01 version  {bytes(pkt).hex(' ')}")
+
+def send_cmd02():
+    pkt = [0x02] + list(hdr[8:12])
+    wr(fd02, *pkt)
+    state["sent02"] = True
+    print(f"{now()}  -> fd02 cmd02 codeSize {bytes(pkt).hex(' ')}")
+    if mode == "handshake":
+        print(f"{now()}  handshake complete: version + cmd01 + cmd02 sent, NO flash written.")
+        print(f"{now()}  (a 'READY 0x55' below would confirm the device accepts us; it may only")
+        print(f"{now()}   arrive once data starts, which handshake mode never does.)")
+        GLib.timeout_add_seconds(4, loop.quit)
+        return
+    # dry-run / commit: start the data phase with the first chunk, then stream on ready
+    send_chunk()
+
+def send_chunk():
+    i = state["idx"]
+    if i >= len(code):
+        return False
+    part = code[i:i + CHUNK]
+    wrbytes(fd01, part)
+    state["idx"] += len(part)
+    if state["idx"] % 2000 < CHUNK or state["idx"] >= len(code):
+        print(f"{now()}  -> fd01 data {state['idx']}/{len(code)} bytes", flush=True)
+    return True
+
+def stream_tick():
+    if not state["ready"]:
+        return True  # keep waiting for the device's go
+    if state["idx"] < len(code):
+        send_chunk()
+        return True
+    if not state["sent03"]:
+        send_cmd03()
+    return False  # stop the timer
+
+def send_cmd03():
+    c = bytearray(crc32)
+    if mode == "dry-run":
+        c[0] ^= 0xFF  # deliberately wrong crc -> device must reject, firmware stays (if staging)
+        print(f"{now()}  dry-run: corrupting crc32 {crc32.hex()} -> {bytes(c).hex()} (device should REJECT)")
+    pkt = [0x03] + list(c)
+    wr(fd02, *pkt)
+    state["sent03"] = True
+    print(f"{now()}  -> fd02 cmd03 crc32    {bytes(pkt).hex(' ')}")
+    GLib.timeout_add_seconds(6, loop.quit)
+
+def on_notify(iface, props, inv):
+    if "Value" not in props:
+        return
+    v = bytes(props["Value"])
+    print(f"{now()}  <- fd02 {v.hex(' ')}", flush=True)
+    if len(v) >= 10 and v[1] == 1:
+        state["ver"] = {"projId": v[2] | v[3] << 8, "boot": v[4], "stack": v[5],
+                        "app": v[6] | v[7] << 8, "appStack": v[8], "appBoot": v[9]}
+        print(f"{now()}     device VERSION projId=0x{state['ver']['projId']:04x} boot={v[4]} "
+              f"stack={v[5]} app=0x{state['ver']['app']:04x} appStack={v[8]} appBoot={v[9]}")
+        if not state["sent01"]:
+            send_cmd01()
+            send_cmd02()
+    elif len(v) >= 3 and v[1] == 2 and v[2] == 0x55:
+        print(f"{now()}     device READY (0x55): accepts our version, ready for data")
+        state["ready"] = True
+        if mode != "handshake" and not state["sent03"]:
+            GLib.timeout_add(PACE_MS, stream_tick)
+    elif len(v) >= 2 and v[1] == 3:
+        # CRC verdict from the device. The stock app ignores value[2], so its exact meaning is
+        # unknown: record the raw bytes and let the runbook interpret (dry-run expects a reject).
+        print(f"{now()}     device CRC RESULT (raw): {v.hex(' ')}  "
+              f"[value[2]=0x{v[2]:02x}]" if len(v) >= 3 else f"{now()}     device CRC RESULT (raw): {v.hex(' ')}")
+        state["done"] = True
+        GLib.timeout_add_seconds(2, loop.quit)
+
+bus.add_signal_receiver(on_notify, "PropertiesChanged", "org.freedesktop.DBus.Properties",
+                        "org.bluez", paths["fd02"])
+fd02.StartNotify()
+print(f"{now()}  notify enabled on fd02; waiting for device version announcement...")
+GLib.timeout_add_seconds(45, loop.quit)  # overall safety timeout
+try:
+    loop.run()
+finally:
+    try: fd02.StopNotify()
+    except dbus.DBusException: pass
+print(f"{now()}  ota-flash finished (mode={mode}).")
+PY
+}
+
 case ${1:-} in
   info)
     read -r -a b <<< "$(read_char cc02)"
@@ -505,6 +673,28 @@ case ${1:-} in
   ota-probe)
     # read-only: listen to fd02 OTA notifications; default 20 s
     ota_probe "${2:-20}" ;;
+  ota-flash)
+    shift
+    if [[ ${1:-} == --help || -z ${1:-} ]]; then
+      sed -n '/^# Maxscend OTA firmware flash/,/owner.s go\.$/p' "$0" | sed 's/^# \{0,1\}//'
+      echo "usage: $0 ota-flash <image.bin> [--dry-run|--commit] [--yes]"
+      echo "  <image.bin>  OTA image with 16-byte header (e.g. firmware/build/app-ota.bin)"
+      echo "  (no mode)    handshake only: version + cmd01 + cmd02, no flash writes, safe"
+      echo "  --dry-run    stream code + WRONG crc32 (device should reject); needs --yes"
+      echo "  --commit     real flash, valid crc32, device reboots onto it; needs --yes"
+      exit 2
+    fi
+    img=$1; shift
+    mode=handshake; yes=
+    for a in "$@"; do
+      case $a in
+        --dry-run) mode=dry-run ;;
+        --commit)  mode=commit ;;
+        --yes)     yes=--yes ;;
+        *) echo "unknown option: $a" >&2; exit 2 ;;
+      esac
+    done
+    ota_flash "$img" "$mode" "$yes" ;;
   keepalive)
     # probe with a cc02 read; gatt() reconnects and recovers on its own
     every=${2:-10}
@@ -523,5 +713,5 @@ case ${1:-} in
     # shellcheck disable=SC2046
     printf '%02x ' $(read_char "$2"); echo ;;
   *)
-    sed -n '2,36p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+    sed -n '2,41p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
 esac

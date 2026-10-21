@@ -121,11 +121,15 @@ in `tools/oss.env` (non versionato). Non sono più valide per la lettura.
 - [x] 4.1 Toolchain `arm-none-eabi-gcc` OK; build GCC in `firmware/` compila un .bin Cortex-M0 valido (vector table @0x08001010) e lo incapsula in immagine OTA. Segnaposto, non flashato.
 - [x] 4.2 `tools/mkimage.py`: header 16B (`projId=0x2a4b boot=4 stack=2 app=0x6900`) + CRC32
       (varianti candidate). Offline, nessun dispositivo.
-- [ ] 4.3 Dry-run OTA **sicuro**: upload con CRC volutamente errato, leggere l'esito
-      (`value[1]==3`) — **solo** dopo aver confermato lo staging. Prova il flusso end-to-end
-      senza sostituire il firmware.
-- [ ] 4.4 Primo firmware reale: app minima all'indirizzo giusto, CRC corretto, caricata solo con
-      rete di sicurezza (immagine di ripristino o secondo dispositivo).
+- [x] 4.3a **Tool di upload pronto (2026-10-21):** `./id115plus ota-flash <img>` implementa
+      l'handshake Maxscend fd00/fd01/fd02 (vedi [docs/ota-flash-runbook.md](docs/ota-flash-runbook.md))
+      con 3 livelli: `handshake` (default, nessuna scrittura in flash), `--dry-run --yes` (CRC
+      errato → test staging), `--commit --yes` (flash reale). Validato a secco (bash+python). Non
+      ancora eseguito sul device (attesa del via del proprietario).
+- [ ] 4.3b Dry-run OTA a CRC errato sul device: leggere l'esito, **confermare lo staging** (device
+      vivo e invariato dopo un CRC errato).
+- [ ] 4.4 Commit reale: **solo** dopo aver identificato il SoC e con rete di sicurezza (seconda
+      unità o immagine di ripristino). Procedura in docs/ota-flash-runbook.md.
 
 ### Fase 5 — Costruzione incrementale del nostro firmware
 - [x] **Linkaggio stack BLE OK (2026-10-21).** Build GCC in `firmware/` che compila l'esempio di
