@@ -39,7 +39,7 @@ import sys
 import zlib
 
 CRC16_NAMES = ("xmodem", "ccitt-false")
-CRC32_NAMES = ("zlib", "bzip2", "mpeg2", "posix")
+CRC32_NAMES = ("jamcrc", "zlib", "bzip2", "mpeg2", "posix")
 
 
 def crc16_variant(data, name):
@@ -68,6 +68,8 @@ for _i in range(256):
 
 def crc32_variant(data, name):
     """A few common CRC-32 variants (reference/fallback)."""
+    if name == "jamcrc":  # CRC-32/JAMCRC: refl, init 0xFFFFFFFF, xorout 0 (= ~zlib). THE device's
+        return zlib.crc32(data) ^ 0xFFFFFFFF          # checksum (confirmed on-device 2026-10-21)
     if name == "zlib":   # CRC-32/ISO-HDLC: refl, init/xorout 0xFFFFFFFF
         return zlib.crc32(data) & 0xFFFFFFFF
     if name == "bzip2":  # CRC-32/BZIP2: no reflect, init/xorout 0xFFFFFFFF
@@ -118,7 +120,7 @@ def main():
     ap = argparse.ArgumentParser(add_help=True, usage=__doc__)
     ap.add_argument("code")
     ap.add_argument("out", nargs="?")
-    ap.add_argument("--crc", default="xmodem")
+    ap.add_argument("--crc", default="jamcrc")
     ap.add_argument("--projid", type=lambda x: int(x, 0), default=0x2A4B)
     ap.add_argument("--boot", type=lambda x: int(x, 0), default=4)
     ap.add_argument("--stack", type=lambda x: int(x, 0), default=2)
