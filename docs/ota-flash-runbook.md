@@ -199,11 +199,22 @@ non è stata accettata. Ipotesi (non risolte senza immagine di riferimento):
   di link-layer finché la connessione regge, quindi il rifiuto è verosimilmente un **mismatch del
   CRC/range**, non perdita di dati.
 
-**Bilancio:** 4 tentativi (2 dry-run + 2 commit), **sempre rifiutati e sempre device intatto** →
-la protezione d'integrità del bootloader funziona benissimo. Il rifiuto sul nostro miglior CRC
-suggerisce che, per sbloccare, serve **ground truth**: un'**immagine ufficiale** (per calcolare il
-CRC16/XMODEM sul suo codice e verificare algoritmo+range esatti) o la **cavia** (aprirla, leggere il
-marking del chip, dump via SWD). Il trial alla cieca sul device unico ha dato quel che poteva.
+Terzo commit (CRC-16/XMODEM su codice **paddato a 1024**, `codeSize=13312`, crc `0xf597`): transfer
+**pulito** (`READY 0x55` ricevuto) ma **rifiutato**, device ancora `MSLM707 60.69.00.86`.
+
+**Bilancio: 5 tentativi (2 dry-run + 3 commit: zlib, xmodem, xmodem-pad1024), sempre rifiutati,
+device sempre intatto.** Poiché l'ultimo transfer era pulito, non è un problema di link: **il CRC
+che calcoliamo non combacia** con quello del device, con tutte le varianti provate. I gradi di
+libertà residui (init 0x0000 vs 0xFFFF, posizione dei byte nel campo da 4, CRC incluso l'header,
+riflessione, dimensione/fill del padding, range esatto) sono troppi per un brute-force alla cieca
+con odds ragionevoli — ogni tentativo è un ciclo di ~2 min su link instabile.
+
+**Conclusione:** il trial alla cieca sul device unico è esaurito. Per sbloccare serve **ground
+truth**: (1) un'**immagine ufficiale** `_60_XX_00_86.bin` (si calcolano i CRC candidati sul suo
+codice/paddato e si trova quale combacia col campo header → algoritmo+range esatti), oppure (2) la
+**cavia** (aprirla: marking del chip → SoC/datasheet/SDK/flash-map e architettura; e/o dump SWD =
+immagine di riferimento). Nota positiva: la protezione d'integrità del bootloader è solidissima
+(5/5 rifiuti puliti, mai un brick).
 
 ## Stato attuale dei prerequisiti (2026-10-21)
 

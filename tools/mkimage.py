@@ -126,9 +126,16 @@ def main():
     ap.add_argument("--appstack", type=lambda x: int(x, 0), default=0)
     ap.add_argument("--appboot", type=lambda x: int(x, 0), default=0)
     ap.add_argument("--crc-only", action="store_true")
+    ap.add_argument("--pad", type=lambda x: int(x, 0), default=0,
+                    help="pad code up to a multiple of N bytes before crc/codeSize (0=no pad)")
+    ap.add_argument("--padbyte", type=lambda x: int(x, 0), default=0xFF)
     a = ap.parse_args()
 
     code = open(a.code, "rb").read()
+    if a.pad and len(code) % a.pad:
+        padlen = a.pad - (len(code) % a.pad)
+        code += bytes([a.padbyte & 0xFF]) * padlen
+        print(f"padded code to {len(code)} bytes (+{padlen} x 0x{a.padbyte & 0xFF:02x})")
     print(f"code: {len(code)} bytes")
     print("  CRC-16 (identified family algorithm):")
     for name in CRC16_NAMES:
