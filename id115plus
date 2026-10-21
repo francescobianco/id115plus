@@ -534,7 +534,17 @@ def on_notify(iface, props, inv):
 
 bus.add_signal_receiver(on_notify, "PropertiesChanged", "org.freedesktop.DBus.Properties",
                         "org.bluez", paths["fd02"])
-fd02.StartNotify()
+# StartNotify can time out on a weak link; retry rather than abort (a mid-OTA abort is safe:
+# the device rolls back if it never gets a valid image, but we still want it to actually start).
+for attempt in range(1, 7):
+    try:
+        fd02.StartNotify()
+        break
+    except dbus.DBusException as e:
+        print(f"{now()}  StartNotify attempt {attempt}/6 failed ({e.get_dbus_name() or e}); retrying")
+        time.sleep(1.5)
+else:
+    sys.exit("could not enable fd02 notifications (link too weak?) — bring the band closer")
 print(f"{now()}  notify enabled on fd02; waiting for device version announcement...")
 GLib.timeout_add_seconds(45, loop.quit)  # overall safety timeout
 try:

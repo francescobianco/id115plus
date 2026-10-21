@@ -126,8 +126,11 @@ in `tools/oss.env` (non versionato). Non sono più valide per la lettura.
       con 3 livelli: `handshake` (default, nessuna scrittura in flash), `--dry-run --yes` (CRC
       errato → test staging), `--commit --yes` (flash reale). Validato a secco (bash+python). Non
       ancora eseguito sul device (attesa del via del proprietario).
-- [ ] 4.3b Dry-run OTA a CRC errato sul device: leggere l'esito, **confermare lo staging** (device
-      vivo e invariato dopo un CRC errato).
+- [~] 4.3b Dry-run OTA sul device (2026-10-21): handshake OK (device accetta la nostra versione).
+      Un dry-run interrotto su `StartNotify` (link debole) ha fatto mostrare "Upgrade" al device,
+      poi **timeout e riavvio sul firmware originale intatto** → entrare in upgrade **non è
+      distruttivo**. Resta da completare lo stream con CRC errato (serve link stabile: braccialetto
+      attaccato all'adattatore; `StartNotify` ora ritenta 6×).
 - [ ] 4.4 Commit reale: **solo** dopo aver identificato il SoC e con rete di sicurezza (seconda
       unità o immagine di ripristino). Procedura in docs/ota-flash-runbook.md.
 

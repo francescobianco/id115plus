@@ -132,6 +132,20 @@ variante giusta.
 - **Brick**: senza SWD e senza immagine ufficiale non è recuperabile via BLE. È il motivo per cui
   il `--commit` su device unico va evitato finché non c'è la cavia.
 
+## Risultati osservati sul device (2026-10-21)
+
+- **Handshake: OK.** Il device annuncia `projId=0x2a4b boot=4 stack=2 app=0x6900 appStack=0
+  appBoot=0` (= header della nostra immagine) e accetta `cmd01`+`cmd02` senza disconnettersi.
+  Compatibilità versione confermata. Device invariato dopo.
+- **Entrare in modalità upgrade NON è distruttivo (scoperta chiave).** Durante un tentativo di
+  dry-run interrotto su `StartNotify` (link debole, nessun dato inviato), il braccialetto ha
+  mostrato **"Upgrade"**, è andato in timeout e **si è riavviato da solo sul firmware originale
+  intatto** (`60.69.00.86`, verificato). → il bootloader **non cancella l'app** finché non ha
+  un'immagine valida, e fa rollback in assenza di dati. Un dry-run interrotto è quindi
+  recuperabile. (Il rifiuto a CRC errato con stream completo resta ancora da verificare.)
+- **Link debole = ostacolo pratico.** A -84 dBm `StartNotify` va in timeout. Il tool ora ritenta
+  `StartNotify` (6×), ma per lo streaming vero **il braccialetto va attaccato all'adattatore**.
+
 ## Stato attuale dei prerequisiti (2026-10-21)
 
 - Tool `ota-flash`: **pronto** (handshake/dry-run/commit), sintassi e Python validati a secco.
