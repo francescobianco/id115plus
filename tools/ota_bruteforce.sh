@@ -52,11 +52,14 @@ cycle_adapter() {  # power-cycle hci0 and rescan so the band is reachable again 
   timeout 14 bluetoothctl --timeout 12 scan on >/dev/null 2>&1 || true
 }
 
-reads_stock() {  # 0 = stock firmware still running (REJECTED); 1 = not stock (POSSIBLE ACCEPT)
-  local out
-  out="$(timeout 30 "$HERE/id115plus" info 2>/dev/null)"
-  echo "    info: ${out:-<no response>}"
-  echo "$out" | grep -q "$STOCK_VER" && return 0 || return 1
+STOCK_NAME="MSLM707"
+
+adv_name() {  # print the device's CURRENT advertised name (empty if not seen). Robust on a weak
+              # link: hearing one adv packet beats a full connect+GATT read (which times out at -84).
+  bluetoothctl remove "$DEV" >/dev/null 2>&1   # drop cache so the name reflects the live advert
+  sleep 1
+  timeout 22 bluetoothctl --timeout 20 scan on 2>/dev/null \
+    | grep -iE "Device ${DEV}" | grep -oiE "(ID115DIY|${STOCK_NAME})" | tail -1
 }
 
 tmp="$(mktemp -d)"
@@ -74,18 +77,20 @@ for img in "${imgs[@]}"; do
   echo
   echo "=== [$idx] $label ==="
   cycle_adapter
-  timeout 140 "$HERE/id115plus" ota-flash "$img" --commit --yes 2>&1 | sed 's/^/    /'
+  timeout 170 "$HERE/id115plus" ota-flash "$img" --commit --yes 2>&1 | sed 's/^/    /'
   echo "    (waiting for reboot...)"; sleep 6
-  cycle_adapter
-  if [ -n "$adv" ] && timeout 16 bluetoothctl --timeout 14 scan on 2>/dev/null | grep -qi "$adv"; then
-    echo "!!! [$idx] $label — advertising name '$adv' SEEN. LIKELY ACCEPTED. Stopping. Check the band."
+  # Detect by ADVERTISED NAME (robust on a weak link). Stock name = rejected; ID115DIY = accepted;
+  # not seen at all = retry once, then stop for a manual check (brick or just RF).
+  nm="$(adv_name)"; [ -z "$nm" ] && { echo "    (not seen, rescanning...)"; nm="$(adv_name)"; }
+  echo "    advertised name: ${nm:-<not seen>}"
+  if echo "$nm" | grep -qi ID115DIY; then
+    echo "!!! [$idx] $label — advertising as ID115DIY. LIKELY ACCEPTED — our firmware is running! Stopping."
     exit 0
-  fi
-  if reads_stock; then
-    echo "    [$idx] REJECTED (stock firmware intact). Next."
+  elif echo "$nm" | grep -qi "$STOCK_NAME"; then
+    echo "    [$idx] REJECTED (stock $STOCK_NAME advertising). Next."
   else
-    echo "!!! [$idx] $label — device NO LONGER reports stock $STOCK_VER."
-    echo "!!! POSSIBLE ACCEPT (our code may be running) OR a transient link failure."
+    echo "!!! [$idx] $label — device not advertising a known name after 2 scans."
+    echo "!!! Could be an accept with a dead image (brick), a different adv name, or just RF."
     echo "!!! Stopping so you can verify the band by hand before any further flashing."
     exit 0
   fi
