@@ -21,6 +21,11 @@ poi funzioni nostre.
 | Chip | Maxscend / Macrogiga, ARM Cortex-M (servizio OTA `fd00`) |
 | Protocollo app | Yoho Sports (`com.uthink.ring`) |
 | Funzioni (flag cc02) | `03 00 00 00`: kmd, multi-sport |
+| Sensori hardware | **sensore di battito ottico (PPG) presente** (confermato fisicamente), accelerometro, vibrazione, display |
+
+> **Hardware ≠ firmware stock.** Il flag battito è a zero, ma il **sensore PPG c'è davvero** sul
+> dispositivo: lo stock non lo espone. Per il firmware custom è una funzione hardware da abilitare
+> (AFE ottico da pilotare, probabile I2C). Vedi [docs/firmware-build.md](docs/firmware-build.md).
 
 Servizi GATT: `cc00` (controllo normale), `fd00` (OTA Maxscend), `ffe0` (**non usato
 dall'app**, libero per noi), `fee7` (WeChat, solo rilevato).
@@ -124,6 +129,8 @@ in `tools/oss.env` (non versionato). Non sono più valide per la lettura.
 
 ### Fase 5 — Costruzione incrementale del nostro firmware
 - [ ] Portare via via le funzioni (display, sensori, passi, notifiche) sul nostro codice.
+- [ ] **Abilitare il sensore di battito (PPG)**: lo stock non lo espone ma l'hardware c'è —
+      identificare l'AFE ottico e il suo bus (probabile I2C), leggere i campioni, calcolare l'HR.
 - [ ] Eventualmente usare il servizio `ffe0` libero per un nostro protocollo di controllo.
 
 ---
@@ -167,3 +174,8 @@ nostro bootloader — servirebbe un'immagine ufficiale; (b) confermare lo stagin
 - 2026-10-20: Fase 4.1/4.2 — `tools/mkimage.py` (immagine OTA) + build GCC in `firmware/` che
   compila un `.bin` Cortex-M0 valido. Toolchain validata end-to-end. Nulla flashato. Push su
   `origin/main`. Pausa: si riprende dal linkaggio dello stack BLE (vedi "Ripresa").
+- 2026-10-21: correzione — il braccialetto **ha un sensore di battito ottico (PPG)**; i flag
+  stock non lo espongono ma l'hardware c'è (era stato attribuito per errore all'altro device).
+  Propagato in README, docs/firmware-build.md, device table. Verifiche live: `info` e `battery`
+  OK (batteria ora 100%, il vecchio "0% charging" era inaffidabile); `ota-probe` fallito per
+  segnale debole (RSSI ~-93 dBm) — avvicinare il device per le notifiche. Nulla flashato.
