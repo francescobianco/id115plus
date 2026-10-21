@@ -139,7 +139,11 @@ in `tools/oss.env` (non versionato). Non sono più valide per la lettura.
       MIT): `main.c` (nostro entry point), `app.c`/`BSP.c`/`mm32f031_it.c`. Advertising sotto il
       nostro nome **`ID115DIY`** (verificato nel binario: GATT name + payload adv). Linka pulito,
       `make image` genera l'immagine OTA. **Nulla flashato.**
-- [ ] Ridurre `app.c`/`BSP.c` al minimo e capire BSP_Init (clock, SPI radio) per controllarlo.
+- [x] Capito `BSP_Init` + porting layer e ridotto `app/app.c` (tolta la logica "gun game":
+      notifiche tasti/auth/KeyData → callback vuoto). Linka pulito, advertising invariato.
+- [ ] **⚠️ Rischio architetturale:** il SDK MS1793 è per modulo a 2 chip (MM32F031 + radio SPI
+      esterna); il nostro MSLM707 è probabilmente un SoC integrato → pinout/transport potrebbero
+      non combaciare. Da dirimere prima del flash (vedi docs/firmware-build.md).
 - [ ] Portare via via le funzioni (display, sensori, passi, notifiche) sul nostro codice.
 - [ ] **Abilitare il sensore di battito (PPG)**: lo stock non lo espone ma l'hardware c'è —
       identificare l'AFE ottico e il suo bus (probabile I2C), leggere i campioni, calcolare l'HR.

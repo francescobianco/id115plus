@@ -14,6 +14,34 @@ dispositivo ([ota-protocol.md](ota-protocol.md), [device-ota-params.md](device-o
   tira dentro solo gli oggetti usati, quindi la tabella GATT (`AttCharList`, callback server…) non
   va fornita. Build riproducibile in `firmware/` (`make fetch && make && make image`). Nessun flash.
 
+## ⚠️ Rischio architetturale aperto: modulo a 2 chip vs SoC integrato
+
+Leggendo `firmware/app/BSP.c` (porting layer del SDK MS1793) emerge che **quel SDK è pensato per
+un modulo a DUE chip: un MCU host MM32F031 + una radio BLE Macrogiga ESTERNA collegata via SPI**
+(SPI1 su PB3/4/5, CS su PB8, IRQ su PA12). La libreria radio parla col chip radio attraverso
+`SPI_WriteRead()` — cioè assume hardware con radio separata.
+
+Il nostro **MSLM707 è un braccialetto minuscolo: quasi certamente un SoC BLE integrato (un solo
+chip, radio on-die)**, non MM32F031 + radio esterna. Se è così:
+- la pinout e il transport SPI di questo SDK **non corrispondono** al nostro hardware;
+- il SDK giusto sarebbe un'altra parte Macrogiga/Maxscend (SoC), non MS1793;
+- **la nostra `app.bin` attuale linka e advertis-a in teoria, ma non è detto che giri sul nostro
+  chip.** Da chiarire *prima* di qualunque flash.
+
+Come dirimere (senza flashare): confrontare i parametri OTA letti dal device (`projId=0x2a4b`,
+boot/stack/app) con i vari SDK Macrogiga (MS1656/MS1892/MS179x), e identificare il chip reale dal
+marking fisico o da un secondo dispositivo. Questo va risolto prima dell'indirizzo base/CRC.
+
+## Cosa fa `BSP_Init()` e il porting layer (da `firmware/app/BSP.c`)
+
+- `SystemClk_HSEInit()` → clock a 48 MHz da HSI×4; `SysTick_Configuration()` → tick 1 ms.
+- `SPIM_Init(SPI_BLE, ...)` → SPI1 master verso la radio esterna (vedi sopra).
+- GPIO IRQ della radio (EXTI falling), LED modulo su PA8, tasto su PA0.
+- Funzioni di porting che la lib radio richiede: `SPI_WriteRead`, `SPI_CS_Enable_/Disable_`,
+  `IsIrqEnabled`, `McuGotoSleepAndWakeup` (sleep/standby), `SysClk48to8`/`SysClk8to48`,
+  `DisableEnvINT`/`EnableEnvINT` (no-op qui), `UpdateLEDValueAll` (no-op). Non si possono
+  rimuovere: sono il "contratto" lato app che la libreria binaria chiama.
+
 ## Periferiche hardware
 
 - **Sensore di battito ottico (PPG)** sul retro: presente fisicamente (confermato). Il firmware
