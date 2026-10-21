@@ -55,12 +55,19 @@ cycle_adapter() {  # power-cycle hci0 and rescan so the band is reachable again 
 
 STOCK_NAME="MSLM707"
 
-adv_name() {  # print the device's CURRENT advertised name (empty if not seen). Robust on a weak
-              # link: hearing one adv packet beats a full connect+GATT read (which times out at -84).
-  bluetoothctl remove "$DEV" >/dev/null 2>&1   # drop cache so the name reflects the live advert
-  sleep 1
-  timeout 22 bluetoothctl --timeout 20 scan on 2>/dev/null \
-    | grep -iE "Device ${DEV}" | grep -oiE "(ID115DIY|${STOCK_NAME})" | tail -1
+adv_name() {  # print the device's CURRENT advertised name (empty only if truly unseen). On a weak
+              # link (-84 dBm) a single scan often misses the advert, so retry up to 4 rounds with a
+              # power-cycle between them; return as soon as a known name is heard. Hearing one adv
+              # packet beats a full connect+GATT read (which times out at this RSSI).
+  local n
+  for _ in 1 2 3 4; do
+    bluetoothctl remove "$DEV" >/dev/null 2>&1; sleep 1
+    n="$(timeout 28 bluetoothctl --timeout 26 scan on 2>/dev/null \
+         | grep -iE "Device ${DEV}" | grep -oiE "(ID115DIY|${STOCK_NAME})" | tail -1)"
+    [ -n "$n" ] && { echo "$n"; return; }
+    busctl set-property org.bluez /org/bluez/hci0 org.bluez.Adapter1 Powered b false >/dev/null 2>&1; sleep 2
+    busctl set-property org.bluez /org/bluez/hci0 org.bluez.Adapter1 Powered b true  >/dev/null 2>&1; sleep 1
+  done
 }
 
 tmp="$(mktemp -d)"
@@ -96,7 +103,7 @@ for img in "${imgs[@]}"; do
   fi
   echo "    (image verified by device; waiting for reboot...)"; sleep 6
   # Detect by ADVERTISED NAME. Stock = rejected; ID115DIY = accepted; not seen = manual check.
-  nm="$(adv_name)"; [ -z "$nm" ] && { echo "    (not seen, rescanning...)"; nm="$(adv_name)"; }
+  nm="$(adv_name)"   # retries internally up to 4 rounds on a weak link
   echo "    advertised name: ${nm:-<not seen>}"
   if echo "$nm" | grep -qi ID115DIY; then
     echo "!!! [$idx] $label — advertising as ID115DIY. LIKELY ACCEPTED — our firmware is running! Stopping."
