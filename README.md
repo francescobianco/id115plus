@@ -1,13 +1,13 @@
 # id115plus
 
-Controllo di un braccialetto **ID115 Plus** (senza sensore cardiaco, protocollo Yoho Sports / uThink)
+Controllo di un braccialetto **ID115 Plus** (con sensore cardiaco ottico, protocollo Yoho Sports / uThink)
 da Linux via Bluetooth LE, senza l'app ufficiale.
 
 ## Dispositivo
 
 | Campo | Valore |
 |---|---|
-| Modello | ID115 Plus, retro liscio senza LED: niente battito cardiaco |
+| Modello | ID115 Plus **con sensore cardiaco ottico (PPG) sul retro** (confermato fisicamente) |
 | Nome BLE | `MSLM707` (l'app Yoho Sports cerca dispositivi con nome che inizia per `MS`) |
 | MAC | `BA:03:5C:05:4A:12` (public, già abbinato) |
 | Firmware | `60.69.00.86` (da `cc02`) |
@@ -18,8 +18,14 @@ Stesso protocollo del braccialetto `MSF0` di `../id115` (da cui è stato portato
 Non è compatibile con la ID115U di `../id115u` (protocollo IDO/VeryFit, servizio `0af0`):
 stessa forma, elettronica e protocollo diversi.
 
-Flag funzioni in `cc02` (byte 15–18): `03 00 00 00` → più sport e "KMD" sì; battito, pressione,
+Flag funzioni in `cc02` (byte 15–18): `03 00 00 00` → più sport e "KMD" sì; pressione,
 temperatura, meteo, musica no.
+
+> **Nota importante (hardware ≠ firmware stock).** Il braccialetto **ha fisicamente un
+> sensore di battito ottico (PPG)**, ma il firmware stock **non lo espone** (bit battito a zero nei
+> flag). Quindi "no battito" qui vale solo per lo *stock*: è una funzione hardware disponibile che
+> il firmware custom può abilitare. Da tenere presente per il lavoro sul firmware (c'è un sensore
+> PPG da pilotare, verosimilmente su I2C, non assumere un retro "cieco").
 
 ## Uso rapido
 
@@ -130,7 +136,7 @@ Primi due byte = flag (u16 LE), salvo i pacchetti che iniziano con `F1`/`F3`/`F4
 |---|---|
 | flag bit 3 | selfie (band scossa in modalità fotocamera) |
 | flag bit 2 | promemoria sedentarietà |
-| flag bit 5 | battito, byte 10 (non presente su questo modello) |
+| flag bit 5 | battito, byte 10 (hardware presente, ma non emesso dal firmware stock) |
 | flag bit 6, flag = `0x80` | log grezzi accelerometro / sonno |
 | altrimenti | byte 2 = stato, byte 3–6 = passi totali (u32 LE) |
 | `F3 18` | la band cerca il telefono |
@@ -166,9 +172,10 @@ Nell'app non esiste una regolazione della luminosità.
 
 ### Non implementato
 
-Presenti nell'app ma non supportati da questo modello (flag di `cc02` a zero) o rischiosi:
+Presenti nell'app ma non esposti dal firmware stock (flag di `cc02` a zero) o rischiosi:
 meteo, musica, rubrica, battito/pressione/temperatura, aggiornamento firmware e quadranti
-(servizio Maxscend `fd00`).
+(servizio Maxscend `fd00`). Nota: il **battito** è un caso a parte — il sensore ottico c'è
+davvero sull'hardware, è lo stock a non attivarlo (vedi sopra).
 
 ## Uso con bluetoothctl
 

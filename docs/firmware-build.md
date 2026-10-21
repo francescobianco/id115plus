@@ -9,6 +9,15 @@ dispositivo ([ota-protocol.md](ota-protocol.md), [device-ota-params.md](device-o
 - Lo stack radio BLE è una **libreria binaria** precompilata del SDK (`mg_api.h`): non si
   ricompila, si linka. Noi scriviamo solo l'applicazione sopra.
 
+## Periferiche hardware
+
+- **Sensore di battito ottico (PPG)** sul retro: presente fisicamente (confermato). Il firmware
+  stock **non lo espone** (flag battito a zero in `cc02`), ma il firmware custom dovrà poterlo
+  pilotare. Tipicamente un AFE ottico (es. famiglia Vcare/VC31 o simili) su **I2C** + LED driver;
+  da identificare il bus/indirizzo esatto quando si arriverà a usarlo. Non assumere un retro
+  "cieco": c'è una periferica in più rispetto a quanto dichiara lo stock.
+- Accelerometro (passi/sonno), motore di vibrazione, display: già usati dallo stock.
+
 ## Mappa di memoria del bootloader d'esempio (SDK MS1793, flash 64 KB)
 
 ```
