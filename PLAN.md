@@ -145,8 +145,13 @@ in `tools/oss.env` (non versionato). Non sono più valide per la lettura.
       famiglia **Lenze ST17H2x**, core Telink/8051-class), non MM32/Macrogiga. Quindi la nostra
       immagine ARM non può girare né avere il CRC giusto → spiega i 5 rifiuti. Il 4-byte è un
       valore per-immagine dal file (non firma fissa). Dettagli in docs/chip.md.
-- [ ] 4.6 **Identificare fisicamente il chip** (serigrafia da cavia o foto FCC) → poi SDK+toolchain
-      e formato immagine di QUEL chip. Il transport OTA `fd00` nostro è riutilizzabile così com'è.
+- [x] 4.6 **Chip identificato: Dialog/Renesas DA14585 (ARM Cortex-M0)** — marking fisico
+      `Dialog DA14585 1824NCAE` su unità imparentata; foto interne FCC (2AHFTID115PLUSHR/COLOR)
+      mostrano un QFN40 coerente. NON MM32/Macrogiga, NON ST17H2x. Il DA14585 esegue da SysRAM
+      (no flash interna), codice da SPI flash esterna. Vedi docs/chip.md.
+- [ ] 4.7 **Rifare `firmware/` sul Dialog SDK6 (DA145xx):** linker verso SysRAM, immagine
+      Dialog/secondary-bootloader, e capire il CRC che il bootloader del vendor verifica (ideale:
+      un'immagine ufficiale). Il transport `./id115plus ota-flash` è riutilizzabile.
 
 ### Fase 5 — Costruzione incrementale del nostro firmware
 - [x] **Linkaggio stack BLE OK (2026-10-21).** Build GCC in `firmware/` che compila l'esempio di
