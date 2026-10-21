@@ -160,6 +160,27 @@ variante giusta.
   (dimostrato); commit di immagine per il chip giusto = ancora da de-rischiare** (identificare il
   SoC; o fare il primo commit sulla cavia).
 
+### Commit reale tentato (2026-10-21) — RIFIUTATO, device intatto
+
+Stream completo (12966 B) + `READY 0x55` dal device + `cmd03` con CRC32 **valido zlib**
+(`db909fc4`). Esito: il device ha **rifiutato** e gira ancora il firmware originale
+(`./id115plus info` → `MSLM707 60.69.00.86`, invariato; se girasse il nostro codice, `info`
+fallirebbe perché la nostra app non implementa cc00/cc02, e il nome sarebbe `ID115DIY`).
+
+Imparato:
+- **Anche un commit di immagine non combaciante è sicuro** (staging + verifica CRC confermati
+  pure sul path reale, non solo col CRC volutamente errato).
+- **La variante CRC32 del bootloader NON è `zlib`** (CRC zlib corretto → comunque rifiutato).
+  Da provare le altre varianti (`bzip2`/`mpeg2`/`posix` in `tools/mkimage.py`, o un algoritmo
+  ancora diverso). Ogni variante **sbagliata** è un rifiuto sicuro; la variante **giusta**
+  committerebbe il nostro codice (e lì torna il rischio architettura: codice MM32/ARM su SoC non
+  confermato → possibile brick).
+
+> Nota: trovare la variante CRC giusta è utile ma è anche il momento in cui il device accetterebbe
+> davvero il codice. Finché l'architettura non è confermata, la variante giusta trovata con il
+> NOSTRO codice = rischio brick. Ideale: trovarla ricaricando l'**immagine ufficiale** del device
+> (che non abbiamo) o usando la **cavia**.
+
 ## Stato attuale dei prerequisiti (2026-10-21)
 
 - Tool `ota-flash`: **pronto** (handshake/dry-run/commit), sintassi e Python validati a secco.

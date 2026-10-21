@@ -130,10 +130,13 @@ in `tools/oss.env` (non versionato). Non sono più valide per la lettura.
       + `cmd03` con CRC32 errato: il device ha **rifiutato** e si è riavviato su `60.69.00.86`
       intatto. Il bootloader fa staging e verifica il CRC prima di committare → un'immagine a CRC
       errato/incompatibile **non bricka**. (Transport OTA end-to-end funzionante.)
-- [ ] 4.4 Commit reale: lo staging protegge dai CRC errati, **non** da un'immagine a CRC corretto
-      ma codice che non gira (architettura sbagliata). Quindi prima: identificare il SoC Maxscend
-      reale (la base MM32/ARM non è confermata) **oppure** fare il primo commit sulla cavia.
-      Procedura in docs/ota-flash-runbook.md.
+- [~] 4.4 Commit reale **tentato (2026-10-21): RIFIUTATO, device intatto.** Stream completo +
+      `READY 0x55` + `cmd03` con CRC **zlib valido** → il device ha tenuto il firmware originale
+      (`MSLM707 60.69.00.86`). Imparato: (a) anche un commit non-combaciante è sicuro; (b) la
+      variante CRC32 del bootloader **non è zlib**.
+- [ ] 4.4b Trovare la variante CRC32 giusta (bzip2/mpeg2/posix/altro). ⚠️ la variante giusta
+      committerebbe il nostro codice MM32/ARM (SoC non confermato) → rischio brick: farlo con
+      immagine ufficiale (non disponibile) o sulla cavia.
 
 ### Fase 5 — Costruzione incrementale del nostro firmware
 - [x] **Linkaggio stack BLE OK (2026-10-21).** Build GCC in `firmware/` che compila l'esempio di
