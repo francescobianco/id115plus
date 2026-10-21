@@ -26,12 +26,13 @@ HERE="$(cd "$(dirname "$0")/.." && pwd)"
 DEV="BA:03:5C:05:4A:12"
 STOCK_VER="60.69.00.86"
 
-code=""; start=0; adv=""; ok=0
+code=""; start=0; adv=""; ok=0; only=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --i-have-valid-code) ok=1 ;;
     --start) start="$2"; shift ;;
     --adv-name) adv="$2"; shift ;;
+    --only) only=",$2,"; shift ;;   # e.g. --only 0,1,11,20,21,31 : try ONLY these indices
     -*) echo "unknown opt $1" >&2; exit 2 ;;
     *) code="$1" ;;
   esac; shift
@@ -68,6 +69,7 @@ echo "=== brute-force: ${#imgs[@]} candidates, code=$code, starting at index $st
 for img in "${imgs[@]}"; do
   idx="$(basename "$img" | cut -d_ -f1)"
   [ "$((10#$idx))" -lt "$start" ] && continue
+  [ -n "$only" ] && case "$only" in *",$((10#$idx)),"*) : ;; *) continue ;; esac
   label="$(basename "$img" .bin | cut -d_ -f2-)"
   echo
   echo "=== [$idx] $label ==="
