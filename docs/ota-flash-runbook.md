@@ -113,14 +113,17 @@ Poi `./id115plus info`: se risponde con una versione nostra/attesa = successo; s
 
 ---
 
-## Variante CRC32 (header byte 12..15)
+## Variante CRC (header byte 12..15) — IDENTIFICATA 2026-10-21
 
-`tools/mkimage.py` genera l'immagine con una variante scelta (`zlib` default; anche `bzip2`,
-`mpeg2`, `posix`, o `wrong`). Non sappiamo quale accetti il bootloader. Strategia: il `--dry-run`
-userà comunque un CRC corrotto (rifiuto atteso); per il `--commit` proveremo la variante più
-probabile (`zlib`) e, se il device la rifiuta **senza** brickare (grazie allo staging), si prova
-la successiva. Per questo lo staging è il prerequisito che rende iterabile la ricerca della
-variante giusta.
+**È CRC-16/XMODEM** (poly 0x1021, init 0x0000), non un CRC-32. Scoperto offline dal bootloader
+del SDK e dal tool ufficiale `mg_ota_head_hex.exe` (vedi docs/firmware-build.md), e coerente col
+rifiuto del commit a CRC-32/zlib. `tools/mkimage.py` ora usa `xmodem` di default (16 bit nei byte
+12..13 LE, 14..15 = 0). Il `--dry-run` usa comunque un CRC corrotto (rifiuto atteso e sicuro).
+
+Resta da provare "accettato" sul device: con il CRC giusto il device **committerebbe** il nostro
+codice → con architettura non confermata è rischio brick. Quindi quel test va su **cavia** o dopo
+aver identificato il SoC. (Il CRC è stato dedotto dalla famiglia MS1793; il nostro è Maxscend:
+stessa toolchain OTA, quasi certo stesso CRC.)
 
 ---
 

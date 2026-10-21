@@ -177,11 +177,15 @@ counter. The only "length" and "crc32" ever sent are the cmd `0x02` / `0x03` hea
 
 ### 2.5 Checksum / CRC
 - **codeSize**: taken verbatim from image-header bytes 8..11 (u32 LE), sent as cmd `0x02`.
-- **crc32**: taken verbatim from image-header bytes 12..15, sent as cmd `0x03`. **The app
+- **crc**: taken verbatim from image-header bytes 12..15, sent as cmd `0x03`. **The app
   never computes a CRC** — it trusts the value baked into the .bin header and lets the device
-  verify the received code against it. So whatever CRC32 variant the Maxscend bootloader uses,
-  you must put the matching 4 bytes at file offset 12..15 of your custom image (byte order as
-  stored in the file; app forwards them unchanged).
+  verify the received code against it.
+  - **Identified 2026-10-21 (see docs/firmware-build.md):** the algorithm is **CRC-16/XMODEM**
+    (poly 0x1021, init 0x0000, non-reflected) over the code, NOT a CRC-32. The 16-bit value sits
+    in header bytes 12..13 (LE), bytes 14..15 = 0. Evidence: SDK bootloader `main-boot.c`
+    (`CRC16(code,size,0)`), the official header tool `mg_ota_head_hex.exe` (CCITT table, prints
+    16-bit), and an on-device commit with CRC-32/zlib that was rejected. `tools/mkimage.py`
+    defaults to `xmodem`.
 
 ### 2.6 Commit / reboot / abort
 - No explicit "commit"/"reboot" command on the firmware path. After cmd `0x03` the device

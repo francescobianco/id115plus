@@ -134,9 +134,13 @@ in `tools/oss.env` (non versionato). Non sono più valide per la lettura.
       `READY 0x55` + `cmd03` con CRC **zlib valido** → il device ha tenuto il firmware originale
       (`MSLM707 60.69.00.86`). Imparato: (a) anche un commit non-combaciante è sicuro; (b) la
       variante CRC32 del bootloader **non è zlib**.
-- [ ] 4.4b Trovare la variante CRC32 giusta (bzip2/mpeg2/posix/altro). ⚠️ la variante giusta
-      committerebbe il nostro codice MM32/ARM (SoC non confermato) → rischio brick: farlo con
-      immagine ufficiale (non disponibile) o sulla cavia.
+- [x] 4.4b **Algoritmo CRC identificato (2026-10-21, studio offline): CRC-16/XMODEM** (non CRC-32).
+      Dal bootloader del SDK (`main-boot.c`: `CRC16(code,size,0)`, poly 0x1021) e dal tool ufficiale
+      `mg_ota_head_hex.exe` (tabella CCITT, stampa 16 bit); coerente col rifiuto del CRC-32/zlib.
+      `tools/mkimage.py` ora default `xmodem`. Vedi docs/firmware-build.md.
+- [ ] 4.4c Verificare "accettato" sul device con CRC-16 giusto. ⚠️ se accetta committa il nostro
+      codice MM32/ARM (SoC non confermato) → rischio brick. Farlo su cavia o dopo aver identificato
+      il SoC. (Lo staging garantisce che un CRC/immagine sbagliata non bricka.)
 
 ### Fase 5 — Costruzione incrementale del nostro firmware
 - [x] **Linkaggio stack BLE OK (2026-10-21).** Build GCC in `firmware/` che compila l'esempio di

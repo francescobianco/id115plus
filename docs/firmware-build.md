@@ -61,6 +61,31 @@ presente sul nostro device.
   `DisableEnvINT`/`EnableEnvINT` (no-op qui), `UpdateLEDValueAll` (no-op). Non si possono
   rimuovere: sono il "contratto" lato app che la libreria binaria chiama.
 
+## Algoritmo CRC identificato (2026-10-21): CRC-16/XMODEM, non CRC-32
+
+Studio offline (zero rischio) dopo che il commit con CRC-32/zlib è stato **rifiutato**. Fonti nel
+SDK MS1793:
+- **Bootloader** `app-OTA/main-boot.c`: `CheckCodeBank()` calcola `CRC16(code, size, init=0)` con
+  la tabella CCITT **poly 0x1021** (non riflesso, MSB-first) sul codice **dopo i 16 byte di
+  header**, e confronta **2 byte** (`Crc&0xFF`==hdr[2], `Crc>>8`==hdr[3]). init=0 ⇒ **CRC-16/XMODEM**.
+- **Tool header ufficiale** `app-OTA/OtaBinTool/mg_ota_head_hex.exe`: contiene la stessa tabella
+  CRC16-CCITT (`0x1021,0x2042,0x3063…`), **nessuna** tabella CRC-32, e stampa `CRC = 0x%04X`
+  (16 bit). Il WeChat `crc32.c` (zlib) è di un altro path (AirSync), non dell'OTA.
+
+**Conclusione:** la famiglia Macrogiga/Maxscend verifica l'OTA con **CRC-16/XMODEM** (poly 0x1021,
+init 0x0000) sul codice; i 4 byte del campo header 12..15 contengono il CRC16 nei byte bassi
+(12..13 LE), 14..15 = 0. Coerente col rifiuto del nostro CRC-32. `tools/mkimage.py` ora usa
+`xmodem` di default (varianti: `ccitt-false`, e i CRC-32 come fallback).
+
+> Nota padding: il tool ufficiale **padda** il file e mette `codeSize`=lunghezza paddata. Per la
+> NOSTRA immagine è irrilevante: inviamo un `codeSize` pari ai byte che mandiamo e il device
+> calcola il CRC su quelli — basta l'algoritmo giusto, non il padding.
+>
+> Resta da **verificare sul device** (CRC16 giusto → il device *accetterebbe* e committerebbe il
+> nostro codice; con architettura non confermata = rischio brick). Quindi: prima SoC confermato o
+> cavia. Fatto su MS1793 (famiglia), il nostro è Maxscend: stessa toolchain OTA, quasi certamente
+> stesso CRC, ma non provato come "accettato".
+
 ## Periferiche hardware
 
 - **Sensore di battito ottico (PPG)** sul retro: presente fisicamente (confermato). Il firmware
