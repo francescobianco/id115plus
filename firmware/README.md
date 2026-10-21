@@ -4,9 +4,10 @@ Build GCC di un'applicazione BLE per il braccialetto, **linkata contro la librer
 binaria del SDK Macrogiga**. Vedi [../docs/firmware-build.md](../docs/firmware-build.md) per
 mappa di memoria, rischio brick e strategia.
 
-**Stato: linkaggio stack BLE OK (Fase 5, avvio).** La toolchain GCC produce un'immagine BLE
-completamente linkata (nessun simbolo irrisolto) a partire dai sorgenti, usando come baseline
-l'esempio di advertising `app-argun` del SDK. **Niente viene ancora flashato**: l'indirizzo base
+**Stato: primo firmware custom che linka e pubblicizza col nostro nome (Fase 5).** La toolchain
+GCC produce un'immagine BLE completamente linkata (nessun simbolo irrisolto). I sorgenti
+applicativi sono **nostri**, in `app/` (derivati dall'esempio `app-argun` del SDK, MIT); fanno
+advertising sotto il nome **`ID115DIY`**. **Niente viene ancora flashato**: l'indirizzo base
 dell'app e la variante CRC32 del nostro bootloader vanno prima confermati.
 
 ## Build
@@ -32,14 +33,18 @@ uniche dipendenze esterne risolte sono HAL/BSP del SoC e la runtime (`__aeabi_*`
 
 | File | Contenuto |
 |---|---|
+| `app/main.c` | il nostro entry point (init clock/BSP/radio, advertising) |
+| `app/app.c` | database GATT + nome device (`ID115DIY`) + callback advertising |
+| `app/BSP.c`, `app/mm32f031_it.c` | board support e handler interrupt (da SDK, MIT, editabili) |
 | `src/startup_mm32f031.c` | vector table MM32F031 + reset handler (init `.data`/`.bss`, chiama `main`) |
 | `ld/app.ld` | linker script: FLASH `0x08001010` (base app, **da confermare**), RAM `0x20000000` 4K |
 | `compat/` | shim per i `#include` con maiuscole/minuscole diverse (`bsp.h`→`BSP.h`, `spi.h`→`SPI.h`) |
 | `vendor/fetch-sdk.sh` | clona il SDK Macrogiga al commit fissato (il SDK non è versionato qui) |
-| `Makefile` | compila baseline (`app-argun`) + HAL + startup, linka la radio, `image` |
+| `Makefile` | compila `app/` + HAL + startup, linka la radio, `image` |
 
-La baseline è l'esempio del SDK; la personalizzazione inizia modificando `main.c`/`app.c`
-(allora conviene copiarli qui sotto `app/` con la loro licenza MIT).
+I sorgenti in `app/` sono nostri (derivati dall'esempio `app-argun` del SDK, MIT): da qui si
+cresce il firmware (prossimo: ridurre `app.c`/`BSP.c` al necessario, poi aggiungere funzioni e
+il sensore HR/PPG).
 
 ## Da fare (prima di avere un firmware reale da flashare)
 

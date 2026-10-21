@@ -18,23 +18,22 @@ BUILD   := build
 OBJ     := $(BUILD)/obj
 
 CPU     := -mcpu=cortex-m0 -mthumb
-INC     := -Icompat -I$(SDK)/Src/inc -I$(SDK)/BSP -I$(SDK)/Src/IWDG -I$(SDK)/Src/ADC \
+INC     := -Icompat -Iapp -I$(SDK)/Src/inc -I$(SDK)/BSP -I$(SDK)/Src/IWDG -I$(SDK)/Src/ADC \
            -I$(SDK)/MM32x031/Include -I$(SDK)/MM32x031/HAL_lib/inc \
-           -I$(SDK)/MM32x031/CMSIS/KEIL_CORE -I$(SDK)/app-argun
+           -I$(SDK)/MM32x031/CMSIS/KEIL_CORE
 CFLAGS  := $(CPU) -Os -g -ffunction-sections -fdata-sections -Wall -std=gnu11 $(INC)
 LDFLAGS := $(CPU) -nostartfiles -Wl,--gc-sections -Wl,--no-wchar-size-warning \
            -Wl,-Map=$(BUILD)/app.map -T ld/app.ld
 LIB     := $(SDK)/Src/lib/mg_BLE_lib_m0.lib
 
-APP     := $(SDK)/app-argun/main.c $(SDK)/app-argun/app.c $(SDK)/app-argun/BSP.c \
-           $(SDK)/app-argun/mm32f031_it.c
+APP     := app/main.c app/app.c app/BSP.c app/mm32f031_it.c
 SUP     := $(SDK)/Src/IWDG/iwdg.c $(SDK)/MM32x031/Source/system_MM32x031.c
 HAL     := $(wildcard $(SDK)/MM32x031/HAL_lib/src/*.c)
 STARTUP := src/startup_mm32f031.c
 SRCS    := $(STARTUP) $(APP) $(SUP) $(HAL)
 OBJS    := $(addprefix $(OBJ)/,$(notdir $(SRCS:.c=.o)))
 
-VPATH   := src $(SDK)/app-argun $(SDK)/Src/IWDG $(SDK)/MM32x031/Source $(SDK)/MM32x031/HAL_lib/src
+VPATH   := src app $(SDK)/Src/IWDG $(SDK)/MM32x031/Source $(SDK)/MM32x031/HAL_lib/src
 
 all: check-sdk $(BUILD)/app.bin
 

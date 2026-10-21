@@ -135,7 +135,11 @@ in `tools/oss.env` (non versionato). Non sono più valide per la lettura.
       Scoperta: l'archivio tira dentro solo gli oggetti usati → la tabella GATT (`AttCharList`
       ecc.) non serve per il solo advertising. Il SDK non è versionato (`make fetch` lo clona a
       commit fissato). **Nulla flashato.**
-- [ ] Scrivere la nostra `main.c` (advertising col nostro nome) al posto della baseline.
+- [x] **Primo firmware custom (2026-10-21).** Sorgenti nostri in `firmware/app/` (da `app-argun`,
+      MIT): `main.c` (nostro entry point), `app.c`/`BSP.c`/`mm32f031_it.c`. Advertising sotto il
+      nostro nome **`ID115DIY`** (verificato nel binario: GATT name + payload adv). Linka pulito,
+      `make image` genera l'immagine OTA. **Nulla flashato.**
+- [ ] Ridurre `app.c`/`BSP.c` al minimo e capire BSP_Init (clock, SPI radio) per controllarlo.
 - [ ] Portare via via le funzioni (display, sensori, passi, notifiche) sul nostro codice.
 - [ ] **Abilitare il sensore di battito (PPG)**: lo stock non lo espone ma l'hardware c'è —
       identificare l'AFE ottico e il suo bus (probabile I2C), leggere i campioni, calcolare l'HR.
@@ -157,16 +161,16 @@ Cortex-M0 valido e lo incapsula in immagine OTA. `src/main.c` è un segnaposto (
 && make image` produce `build/app.elf` / `build/app.bin` / `build/app-ota.bin` senza simboli
 irrisolti, baseline = esempio `app-argun` del SDK (clonato da `make fetch`, non versionato).
 
-**Prossimo passo (sicuro, senza flash):** scrivere la **nostra** `main.c` al posto della
-baseline — advertising con il nostro nome device — e verificare che linki e che l'immagine OTA
-regga. Poi aggiungere funzioni (display, passi, e il **sensore HR/PPG**, che lo stock non espone).
-In pratica:
-1. Copiare `app-argun/{main,app,BSP,mm32f031_it}.c` sotto `firmware/app/` (licenza MIT) e puntarci
-   il Makefile, così la base è editabile nel repo.
-2. Ridurre `app.c`/`BSP.c` al minimo necessario e cambiare il payload di advertising / nome.
-3. Prima di flashare davvero servono ancora: base app esatta + variante CRC32 (serve un'immagine
-   ufficiale), conferma dello staging del bootloader, e la rete di sicurezza (secondo braccialetto,
-   che l'utente sta valutando di comprare su AliExpress).
+**Fatto (2026-10-21):** sorgenti nostri in `firmware/app/`, advertising col nome `ID115DIY`,
+link pulito + immagine OTA. `cd firmware && make fetch && make && make image`.
+
+**Prossimo passo (sicuro, senza flash):** capire e ridurre `app/BSP.c` (cosa fa `BSP_Init`:
+clock, GPIO, SPI verso la radio) e `app/app.c` (database GATT) al minimo che ci serve, così
+controlliamo davvero il firmware invece di ereditare la configurazione "argun". Poi aggiungere
+funzioni nostre e, più avanti, il **sensore HR/PPG** (che lo stock non espone). Prima di flashare
+davvero servono ancora: base app esatta + variante CRC32 (serve un'immagine ufficiale), conferma
+dello staging del bootloader, e la rete di sicurezza (secondo braccialetto, in valutazione su
+AliExpress).
 
 **Nodi aperti prima di flashare davvero:** (a) indirizzo base app esatto + variante CRC32 del
 nostro bootloader — servirebbe un'immagine ufficiale; (b) confermare lo staging del bootloader;
@@ -187,6 +191,8 @@ nostro bootloader — servirebbe un'immagine ufficiale; (b) confermare lo stagin
 - 2026-10-21: Fase 5 avviata — build GCC in `firmware/` linka l'app BLE contro la radio binaria
   del SDK senza simboli irrisolti (baseline `app-argun`); `make image` genera l'immagine OTA.
   SDK non versionato (`make fetch`). Nulla flashato.
+- 2026-10-21: primo firmware custom — sorgenti nostri in `firmware/app/`, advertising col nome
+  `ID115DIY` (verificato nel binario). Linka pulito + immagine OTA. Nulla flashato.
 - 2026-10-21: correzione — il braccialetto **ha un sensore di battito ottico (PPG)**; i flag
   stock non lo espongono ma l'hardware c'è (era stato attribuito per errore all'altro device).
   Propagato in README, docs/firmware-build.md, device table. Verifiche live: `info` e `battery`
