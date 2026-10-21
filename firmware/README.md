@@ -1,3 +1,11 @@
+# firmware/ — [SUPERATO] build MM32F031 (chip sbagliato)
+
+> ⚠️ **Superato (2026-10-21).** Questo build assume un **MM32F031/Macrogiga**, ma il chip reale
+> è un **Dialog DA14585** (ARM Cortex-M0, esegue da SysRAM, no flash interna) — vedi
+> [../docs/chip.md](../docs/chip.md). La ricostruzione sull'architettura giusta è in
+> **[../firmware-da14585/](../firmware-da14585/)**. Questo resta solo come storia/validazione
+> toolchain. Non usarlo per il device reale.
+
 # firmware/ — firmware BLE custom per MSLM707 (MM32F031, Cortex-M0)
 
 Build GCC di un'applicazione BLE per il braccialetto, **linkata contro la libreria radio

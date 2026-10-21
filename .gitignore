@@ -4,3 +4,4 @@
 tools/oss.env
 firmware/build/
 firmware/vendor/MS1793-SDK
+firmware-da14585/build/

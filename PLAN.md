@@ -149,9 +149,15 @@ in `tools/oss.env` (non versionato). Non sono più valide per la lettura.
       `Dialog DA14585 1824NCAE` su unità imparentata; foto interne FCC (2AHFTID115PLUSHR/COLOR)
       mostrano un QFN40 coerente. NON MM32/Macrogiga, NON ST17H2x. Il DA14585 esegue da SysRAM
       (no flash interna), codice da SPI flash esterna. Vedi docs/chip.md.
-- [ ] 4.7 **Rifare `firmware/` sul Dialog SDK6 (DA145xx):** linker verso SysRAM, immagine
-      Dialog/secondary-bootloader, e capire il CRC che il bootloader del vendor verifica (ideale:
-      un'immagine ufficiale). Il transport `./id115plus ota-flash` è riutilizzabile.
+- [x] 4.7 **Scheletro DA14585 creato (2026-10-21):** `firmware-da14585/` compila un'immagine
+      RAM-resident Cortex-M0 valida sulla memory-map del DA14585 (vector table @`0x07FC0000`, SP
+      `0x07FD8000`). Segnaposto senza BLE (valida toolchain+mappa). `firmware/` (MM32) marcato
+      superato. Template GCC di riferimento: schrab/DA14585-e-ink-display.
+- [ ] 4.8 App BLE reale su **DA145xx SDK 6.x** (da scaricare da Renesas): advertising col nostro
+      nome linkando lo stack del SDK.
+- [ ] 4.9 Determinare formato immagine + checksum del **secondary bootloader del vendor** (header
+      16B custom su fd00, NON il SUOTA standard a 64B/CRC32): da immagine ufficiale o dump SWD
+      della cavia. Poi caricare via `./id115plus ota-flash`.
 
 ### Fase 5 — Costruzione incrementale del nostro firmware
 - [x] **Linkaggio stack BLE OK (2026-10-21).** Build GCC in `firmware/` che compila l'esempio di
