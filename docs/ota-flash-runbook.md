@@ -184,6 +184,27 @@ Imparato:
 > NOSTRO codice = rischio brick. Ideale: trovarla ricaricando l'**immagine ufficiale** del device
 > (che non abbiamo) o usando la **cavia**.
 
+### Commit CRC-16/XMODEM tentato (2026-10-21) — anch'esso RIFIUTATO, device intatto
+
+Stream completo + `cmd03` con CRC-16/XMODEM corretto (`0xf004` → `04 f0 00 00`). Esito: **rifiutato**,
+device ancora `MSLM707 60.69.00.86`. Quindi anche la variante CRC che l'analisi offline indicava
+non è stata accettata. Ipotesi (non risolte senza immagine di riferimento):
+- un dettaglio del CRC ancora off: **range/padding** (il tool ufficiale padda il codice e mette
+  `codeSize`=paddato → forse il device vuole codeSize allineato e CRC sul paddato), init `0xFFFF`
+  (ccitt-false) invece di `0x0000`, o posizione dei byte nel campo da 4.
+- il device Maxscend differisce dalla famiglia MS1793 da cui è dedotto il CRC.
+- `READY 0x55` **non ricevuto** in questo tentativo (nel commit zlib sì): o notifica persa (RF), o
+  il device non è entrato pulito in stato "ricezione". `fd01` è solo *write-without-response*.
+- Nota: a livello BLE i pacchetti write-without-response sono comunque consegnati con ritrasmissione
+  di link-layer finché la connessione regge, quindi il rifiuto è verosimilmente un **mismatch del
+  CRC/range**, non perdita di dati.
+
+**Bilancio:** 4 tentativi (2 dry-run + 2 commit), **sempre rifiutati e sempre device intatto** →
+la protezione d'integrità del bootloader funziona benissimo. Il rifiuto sul nostro miglior CRC
+suggerisce che, per sbloccare, serve **ground truth**: un'**immagine ufficiale** (per calcolare il
+CRC16/XMODEM sul suo codice e verificare algoritmo+range esatti) o la **cavia** (aprirla, leggere il
+marking del chip, dump via SWD). Il trial alla cieca sul device unico ha dato quel che poteva.
+
 ## Stato attuale dei prerequisiti (2026-10-21)
 
 - Tool `ota-flash`: **pronto** (handshake/dry-run/commit), sintassi e Python validati a secco.
