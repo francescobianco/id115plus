@@ -141,9 +141,11 @@ in `tools/oss.env` (non versionato). Non sono più valide per la lettura.
       `make image` genera l'immagine OTA. **Nulla flashato.**
 - [x] Capito `BSP_Init` + porting layer e ridotto `app/app.c` (tolta la logica "gun game":
       notifiche tasti/auth/KeyData → callback vuoto). Linka pulito, advertising invariato.
-- [ ] **⚠️ Rischio architetturale:** il SDK MS1793 è per modulo a 2 chip (MM32F031 + radio SPI
-      esterna); il nostro MSLM707 è probabilmente un SoC integrato → pinout/transport potrebbero
-      non combaciare. Da dirimere prima del flash (vedi docs/firmware-build.md).
+- [ ] **⚠️ Rischio architetturale (aggiornato 2026-10-21):** l'OTA del nostro device è il path
+      **Maxscend** (`fd00`, confermato dall'APK; il path **Telink** dell'app è di altri modelli, non
+      nostro). Ma "Maxscend" ≠ "Macrogiga": il SDK MS1793/MM32 su cui è basato `firmware/` è
+      un'assunzione **non verificata** e forse il chip sbagliato. Non abbiamo SDK/toolchain/datasheet
+      del SoC Maxscend. → identificare il SoC reale prima del flash (vedi docs/firmware-build.md).
 - [ ] Portare via via le funzioni (display, sensori, passi, notifiche) sul nostro codice.
 - [ ] **Abilitare il sensore di battito (PPG)**: lo stock non lo espone ma l'hardware c'è —
       identificare l'AFE ottico e il suo bus (probabile I2C), leggere i campioni, calcolare l'HR.

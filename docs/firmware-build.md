@@ -32,6 +32,25 @@ Come dirimere (senza flashare): confrontare i parametri OTA letti dal device (`p
 boot/stack/app) con i vari SDK Macrogiga (MS1656/MS1892/MS179x), e identificare il chip reale dal
 marking fisico o da un secondo dispositivo. Questo va risolto prima dell'indirizzo base/CRC.
 
+### Aggiornamento 2026-10-21 — l'OTA del device è "Maxscend", NON Telink, e NON confermato MM32
+
+Dal reverse dell'APK (`com/uthink/ring/service/BluetoothLeService.java`) l'app Yoho Sports ha
+**due** famiglie OTA, scelte dai servizi GATT annunciati dal device:
+- **Telink** (SPP OTA, UUID base `00010203-...-1912`, classe `TelinkOta`, blocchi 16B, core tc32):
+  **NON è il nostro** — è per altri braccialetti della stessa app.
+- **Maxscend** (`fd00`/`fd01`/`fd02`, costanti `MAXSCEND_OTA_*`): **è il nostro** (il device
+  espone `fd00/fd01/fd02`). Conferma che `docs/ota-protocol.md` descrive il path giusto.
+
+Conseguenza importante: **"Maxscend" ≠ "Macrogiga".** Il SDK MS1793 (Macrogiga, MM32 Cortex-M0)
+su cui è basato `firmware/` è un'**assunzione non verificata** e potrebbe essere il chip
+sbagliato. Non abbiamo un SDK/toolchain/datasheet del SoC Maxscend (né negli SDK clonati —
+MM32/`cx32l003` — né su GitHub). Finché il SoC non è identificato, un'immagine compilata da noi
+**potrebbe non girare** anche se l'upload OTA va a buon fine.
+
+Corroborazione HR: il cloud OTA Yoho è organizzato per componenti tipo `MC3631`/`MC3413W`
+(accelerometri mCube) e **`HRS3300`** (sensore battito ottico PPG) — coerente col sensore HR
+presente sul nostro device.
+
 ## Cosa fa `BSP_Init()` e il porting layer (da `firmware/app/BSP.c`)
 
 - `SystemClk_HSEInit()` → clock a 48 MHz da HSI×4; `SysTick_Configuration()` → tick 1 ms.
