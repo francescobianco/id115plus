@@ -10,16 +10,37 @@ servizi BLE esposti, dall'APK ufficiale e dalla documentazione pubblica del prod
 |---|---|
 | Servizio OTA sul dispositivo | `fd00` / `fd01` / `fd02` |
 | Nome nell'APK | `MAXSCEND_OTA_SERVICE` (`BluetoothLeService.java:225-227`) |
-| Produttore | Maxscend (卓胜微, Jiangsu Maxscend Microelectronics) / Macrogiga Electronics |
-| Core | ARM Cortex-M (M0 / M0+ / M3 secondo il modello) |
+| Produttore (etichetta APK) | `MAXSCEND_OTA` — ma è solo il nome che l'app dà a questo path OTA |
+| Core | **NON confermato; molto probabilmente NON ARM** (vedi correzione sotto) |
 
-"Maxscend" e "Macrogiga" sono lo stesso ecosistema di SoC BLE. Il servizio OTA `fd00` con
-caratteristiche `fd01` (dati) e `fd02` (comandi) è la firma del loro bootloader OTA, lo stesso
-schema dei SDK pubblici MacroGiga.
+> ## ⚠️ Correzione 2026-10-21 — l'assunzione "Macrogiga/MM32/ARM" è probabilmente sbagliata
+>
+> Tutto il lavoro su `firmware/` era basato sull'ipotesi che `fd00` = ecosistema **Macrogiga
+> (MM32, ARM Cortex-M0)**. La ricerca mostra che **non regge**:
+> - Le schede prodotto dell'**ID115 Plus** indicano come MCU **"mCube MX1003"** (accel MC3613, HR
+>   **HRS3300**, 16KB+512KB), un altro venditore dice **"ST17H25"**. Entrambi sono **BLE SoC
+>   low-cost NON ARM**: la famiglia **Lenze ST17H2x** (datasheet "low cost BLE+2.4G dual mode
+>   SoC"); un teardown di un ST17H26 ha trovato perfino un **ID Telink** → core proprietario
+>   (Telink/8051-class), **non** Cortex-M.
+> - Conseguenza: l'immagine ARM che costruiamo in `firmware/` **non girerà mai** su questo
+>   silicio, e il CRC che il suo bootloader calcola non è quello della famiglia MacroGiga.
+>   Questo spiega perché **5 upload OTA sono stati rifiutati** (vedi docs/ota-flash-runbook.md):
+>   immagine di architettura sbagliata + CRC di una famiglia diversa.
+> - "Maxscend"/"Macrogiga" nell'app è solo l'etichetta di quel path OTA, non la prova del
+>   silicio. Gli SDK MacroGiga clonati **non sono il nostro chip**.
+>
+> **Serve l'identificazione fisica del chip** (serigrafia): aprendo la **cavia**, o dalle foto
+> interne del deposito **FCC** (ID115 è depositato da Shenzhen DO Intelligent Technology). I
+> venditori non concordano (MX1003 / ST17H25 / mCube / Lenze / Telink) e gli esemplari variano,
+> quindi solo il marking risolve. Poi servono SDK+toolchain di QUEL chip e il suo formato immagine.
+>
+> Risorse di partenza se risultasse famiglia Lenze/Telink: datasheet Lenze ST17H2x; tooling
+> community per il fratello **ST17H66** (`biemster/FindMy` issue #5, doc.lenze.club) — ma
+> architettura diversa dall'ST17H26, quindi da verificare dopo il marking.
 
-L'ipotesi "MCUDE MX1003" circolata nei forum (commento su Hackaday, non verificato) è coerente
-con questa famiglia ma non confermata. La certezza sul part number esatto si avrebbe solo dalla
-serigrafia sul chip, cioè aprendo il dispositivo — cosa che vogliamo evitare.
+Il servizio OTA `fd00`/`fd01`/`fd02` sul dispositivo resta valido come **transport** (lo abbiamo
+pilotato con successo: staging + verifica CRC confermati). È il *contenuto* (architettura +
+formato/CRC) che dev'essere quello del chip reale.
 
 ## Risorse pubbliche del produttore (GitHub `macrogiga`)
 

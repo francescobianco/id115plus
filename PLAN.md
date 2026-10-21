@@ -138,9 +138,15 @@ in `tools/oss.env` (non versionato). Non sono più valide per la lettura.
       Dal bootloader del SDK (`main-boot.c`: `CRC16(code,size,0)`, poly 0x1021) e dal tool ufficiale
       `mg_ota_head_hex.exe` (tabella CCITT, stampa 16 bit); coerente col rifiuto del CRC-32/zlib.
       `tools/mkimage.py` ora default `xmodem`. Vedi docs/firmware-build.md.
-- [ ] 4.4c Verificare "accettato" sul device con CRC-16 giusto. ⚠️ se accetta committa il nostro
-      codice MM32/ARM (SoC non confermato) → rischio brick. Farlo su cavia o dopo aver identificato
-      il SoC. (Lo staging garantisce che un CRC/immagine sbagliata non bricka.)
+- [x] 4.4c Tentati 3 commit (zlib, xmodem, xmodem-pad1024): **tutti rifiutati, device intatto**
+      (vedi runbook). Transfer pulito (READY 0x55) ma rifiutato → il CRC non combacia.
+- [x] 4.5 **Ricerca chip/OTA (2026-10-21): l'architettura di `firmware/` è sbagliata.** L'ID115
+      Plus monta un BLE SoC low-cost **NON ARM** (schede prodotto: "mCube MX1003" o "ST17H25";
+      famiglia **Lenze ST17H2x**, core Telink/8051-class), non MM32/Macrogiga. Quindi la nostra
+      immagine ARM non può girare né avere il CRC giusto → spiega i 5 rifiuti. Il 4-byte è un
+      valore per-immagine dal file (non firma fissa). Dettagli in docs/chip.md.
+- [ ] 4.6 **Identificare fisicamente il chip** (serigrafia da cavia o foto FCC) → poi SDK+toolchain
+      e formato immagine di QUEL chip. Il transport OTA `fd00` nostro è riutilizzabile così com'è.
 
 ### Fase 5 — Costruzione incrementale del nostro firmware
 - [x] **Linkaggio stack BLE OK (2026-10-21).** Build GCC in `firmware/` che compila l'esempio di
