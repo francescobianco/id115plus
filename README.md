@@ -18,6 +18,11 @@ Stesso protocollo del braccialetto `MSF0` di `../id115` (da cui è stato portato
 Non è compatibile con la ID115U di `../id115u` (protocollo IDO/VeryFit, servizio `0af0`):
 stessa forma, elettronica e protocollo diversi.
 
+> **ID115 è un nome commerciale, non un'implementazione.** Sotto lo stesso nome si trovano
+> braccialetti con chip e protocolli diversi (Maxscend/Dialog, Nordic, PhyPlus, …). Per questo i
+> dispositivi si documentano in [`devices/`](devices/), una cartella per **nome Bluetooth**
+> (`devices/MSLM707/`, `devices/Fit-Here/`, …), con l'indice in [`devices/README.md`](devices/README.md).
+
 Flag funzioni in `cc02` (byte 15–18): `03 00 00 00` → più sport e "KMD" sì; pressione,
 temperatura, meteo, musica no.
 
@@ -219,6 +224,9 @@ che somiglia più al contenuto di `cc02` (firmware ai byte 11–14) che a un pac
 `./id115plus battery` mostra quindi "0% charging", valore probabilmente non affidabile. Da verificare.
 
 ## Vedi anche
+
+[`devices/`](devices/): un dispositivo per cartella, col nome Bluetooth (indice e regola in
+`devices/README.md`), tra cui `Fit-Here` (PhyPlus PHY62xx).
 
 `../id115`: lo stesso protocollo per il braccialetto `MSF0` (`BA:03:5C:0B:21:E1`), con l'APK.
 
