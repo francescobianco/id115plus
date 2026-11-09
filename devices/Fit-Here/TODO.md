@@ -30,9 +30,12 @@ Contesto: [`DOSSIER.md`](DOSSIER.md). Prima di qualunque comando OTA che scrive:
 
 - [ ] Finire gli impulsi sui pin mancanti: `P17`, `P24`, `P25`, `P27`, `P31`, `P32`, `P33`, `P34`.
       Esclusi per sicurezza: `P07` (test mode), `P09`/`P10` (UART). `P11` probabilmente è il tasto.
-- [ ] Trovare nel codice stock del dump i pin di display, tasto, sensori e carica. Attenzione: la
-      prima analisi automatica delle chiamate aveva un errore nel calcolo dei salti BL (`imm -= 1<<22`
-      è la correzione), da rifare.
+- [x] Analisi delle chiamate rifatta sul codice stock: batteria, `P15`, I2C (tabella nel README,
+      sezione "Pin dal codice stock"). Sono risultati statici, da provare sul dispositivo.
+- [ ] Trovare i pin di display e tasto: non ricavabili dal codice XIP, il driver del display è nella
+      parte SRAM persa. Restano gli impulsi sui pin mancanti e le letture di livello.
+- [ ] Demo che riporta via BLE la tensione su `P14` e il livello di `P15`, da provare mettendo e
+      togliendo il braccialetto dal caricatore: verifica insieme batteria e ricarica.
 - [ ] Identificare il controller del display e portare il driver (l'LP715 usa un JD9850).
 - [ ] Leggere la batteria via ADC e gestire la carica.
 

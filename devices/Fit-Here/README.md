@@ -114,6 +114,26 @@ tools/phy_flash.py firmware/demo/_build/fh_demo.hex --confine 0x11000:0x27000 --
 MAC=C0:00:A1:B1:02:64 tools/phy_ota.py 4c500002=2017f401                              # vibra 500 ms
 ```
 
+### Pin dal codice stock (analisi statica del dump, 2026-11-09)
+
+Ricavati dal codice XIP `0x20000`–`0x39aff` confrontando le chiamate con le firme dell'SDK. Nessuno è
+ancora provato sul dispositivo. Numeri di pin: enum `gpio_pin_e` (`P14`=8, `P15`=9, `P23`=14).
+
+| Pin | Funzione | Certezza |
+|---|---|---|
+| `P14` | batteria, ADC canale 5, singolo, alta risoluzione, pin flottante | configurazione letta dal codice |
+| `P15` | ingresso con pull-down, interrupt su entrambi i fronti, 100 ms di antirimbalzo; probabile rilevamento caricatore (salva il livello e cambia schermata) | configurazione letta, ruolo dedotto |
+| `P23` | vibro (noto): lo stock lo spegne come input con pull-down | coerente con la prova fisica |
+| `P18` SDA, `P20` SCL | I2C, dispositivo a `0x19`, probabile accelerometro | indirizzo letto, tipo dedotto |
+| `P32` SDA, `P33` SCL | secondo I2C, senza chiamanti diretti: forse codice inutilizzato | da verificare |
+| `P03` | solo un `hal_gpioin_disable` | ruolo ignoto |
+
+Batteria: `V_batt ≈ V_adc × 5,5454` (costante `55454` in unità di 0,1 mV, unità dedotta dalle soglie).
+Livello `(v - 34500) × 100 / 7300`: 0 % a 3,45 V, 100 % da 4,18 V, letture sotto 2,5 V scartate.
+
+Non trovati: pin del display e del tasto. Il driver del display passa da funzioni in SRAM
+(`0x1fff681c`, `0x1fff68b0`), cioè nella parte dello stock persa.
+
 ## Strumenti
 
 ```shell
