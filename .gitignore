@@ -8,6 +8,7 @@ firmware-da14585/build/
 devices/Fit-Here/firmware/vendor/
 devices/Fit-Here/firmware/_core/
 devices/Fit-Here/firmware/dumper/_build/
+devices/Fit-Here/firmware/demo/_build/
 __pycache__/
 
 # Dialog DA145xx SDK6 (not redistributable — download from Renesas)

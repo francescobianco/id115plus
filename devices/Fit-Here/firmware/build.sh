@@ -20,6 +20,13 @@ if [ ! -d "$VENDOR/.git" ]; then
     git -C "$VENDOR" checkout -q FETCH_HEAD
 fi
 
+if [ "$1" = demo ]; then
+    rm -rf demo/_build
+    docker run --rm -u "$(id -u):$(id -g)" -v "$PWD":/w -w /w/demo "$IMAGE" \
+        make -j8 "MK=/w/$VENDOR/sdk/phy6222.mk"
+    exit
+fi
+
 rm -rf _core
 mkdir _core
 cp "$VENDOR"/lib/core/* _core/
