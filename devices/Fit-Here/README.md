@@ -55,11 +55,22 @@ Riferimenti: sorgenti SDK in
 | `02` fuori stato | `64` | rifiutato, niente scritto |
 | `03` | `05 ff` | `NOT_SUPPORTED` |
 | dati su `ff04` | `64` | rifiutato |
-| `05` (ERASE) | `64` | l'SDK di riferimento non risponde: la build del produttore è diversa |
-| `06` + 16 byte | nessuna | ignorato |
+| `05` (ERASE) | `64` | fuori stato, come nell'SDK |
+| `06` + 16 byte | nessuna | ignorato: più lungo della struct dei comandi di questa build |
 | `04 01` | `00 8a` | riavvio alla disconnessione → torna l'app stock (vibra, mostra batteria/carica) |
 | `04` | — | riavvio immediato |
 | **`01`** | — | **NON mandare senza un'immagine completa**: START cancella la tabella app a `0x3000`, lo stock non riparte più. `phy_ota.py` lo rifiuta senza `--unsafe` |
+
+### OTA reale (verificato il 2026-11-09)
+
+- `01 <n> ff` risponde `00 81`. Da quel momento lo stock non parte più finché non viene riscritta
+  la tabella a `0x3000`.
+- La partition-info deve essere di **16 byte** (`02`, indice, flash, run, size, CRC **u16**): la
+  forma da 18 byte degli SDK più recenti viene ignorata in silenzio.
+- La partition-info viene solo validata: la flash si tocca solo dopo l'ultimo pacchetto dati.
+- Una partizione XIP a `0x1101f000` è accettata in partition-info ma, dopo i dati, l'updater
+  risponde `10` (`INVALID_ADDR`). Partizioni SRAM nel banco a offset `0xB000`: scritte senza errori.
+- Il dumper in `firmware/dumper` è tutto in SRAM e occupa solo `0x1c000`–`0x1efff`.
 
 ### Come scrive la flash (dal sorgente SDK, non ancora verificato su questa build)
 

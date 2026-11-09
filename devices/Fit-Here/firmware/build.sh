@@ -2,7 +2,8 @@
 # Build the dumper with e-lab's PHY6222 SDK, pinned, in its Docker image.
 # Output: dumper/_build/fh_dumper.hex
 #
-# The XIP code is linked at 0x1101f000, the last 4 KB sector of the app bank. With
+# Everything is linked into SRAM, code included ("flash" in the linker script is redirected to
+# 0x1fff9000): this updater refuses the XIP partition with error 0x10. With
 # `phy_flash.py --bank-offset 0xB000` the whole image stays in 0x1c000-0x1ffff.
 set -e
 cd "$(dirname "$0")"
@@ -23,9 +24,9 @@ rm -rf _core
 mkdir _core
 cp "$VENDOR"/lib/core/* _core/
 cp dumper/core/* _core/
-sed 's/ORIGIN = 0x11010100, LENGTH = 0x1ff00/ORIGIN = 0x1101f000, LENGTH = 0x1000/' \
+sed 's/ORIGIN = 0x11010100, LENGTH = 0x1ff00/ORIGIN = 0x1fff9000, LENGTH = 0x2000/' \
     "$VENDOR/sdk/phy6222/misc/phy6222.ld" > _core/dumper.ld
-grep -q 'ORIGIN = 0x1101f000' _core/dumper.ld
+grep -q 'ORIGIN = 0x1fff9000' _core/dumper.ld
 
 rm -rf dumper/_build
 docker run --rm -u "$(id -u):$(id -g)" -v "$PWD":/w -w /w/dumper "$IMAGE" \

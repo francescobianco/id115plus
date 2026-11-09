@@ -88,8 +88,21 @@ def run(path):
     bus.add_signal_receiver(on_change, "PropertiesChanged", "org.freedesktop.DBus.Properties",
                             path=dev_path)
     bus.add_signal_receiver(on_added, "InterfacesAdded", "org.freedesktop.DBus.ObjectManager")
-    adapter.SetDiscoveryFilter({"Transport": "le", "DuplicateData": dbus.Boolean(True)})
-    adapter.StartDiscovery()
+    adapter_props = dbus.Interface(bus.get_object("org.bluez", "/org/bluez/hci0"),
+                                   "org.freedesktop.DBus.Properties")
+
+    def keep_discovering():
+        # other programs can power-cycle the adapter, which silently ends the scan
+        try:
+            if not adapter_props.Get("org.bluez.Adapter1", "Discovering"):
+                adapter.SetDiscoveryFilter({"Transport": "le", "DuplicateData": dbus.Boolean(True)})
+                adapter.StartDiscovery()
+        except dbus.DBusException:
+            pass
+        return True
+
+    keep_discovering()
+    GLib.timeout_add_seconds(3, keep_discovering)
 
     def report():
         got, ok = col.counts()
@@ -105,7 +118,10 @@ def run(path):
     except KeyboardInterrupt:
         pass
     finally:
-        adapter.StopDiscovery()
+        try:
+            adapter.StopDiscovery()
+        except dbus.DBusException:
+            pass
         report()
 
 

@@ -155,6 +155,7 @@ class Updater:
                                      "org.freedesktop.DBus.Properties",
                                      path=self.chars[UUID_RSP])
         self._char(UUID_RSP).StartNotify()
+        time.sleep(1.5)   # let the link settle: START blocks the device during a sector erase
 
     def _char(self, short):
         return self.dbus.Interface(self.bus.get_object("org.bluez", self.chars[short]),
@@ -200,8 +201,10 @@ def send(parts, mac, pace):
     up.expect(RSP_START)
     for i, (flash, run, data) in enumerate(parts):
         print("partition %d/%d" % (i + 1, len(parts)), flush=True)
-        up.command(struct.pack("<BBIIII", 0x02, i, flash, run, len(data), crc16(data)))
+        # 16 bytes, CRC as u16: this updater (V3.0.7) ignores the 18-byte form of newer SDKs
+        up.command(struct.pack("<BBIIIH", 0x02, i, flash, run, len(data), crc16(data)))
         up.expect(RSP_PART_INFO)
+        print("  accepted, sending %d bytes" % len(data), flush=True)
         for off in range(0, len(data), PACKET):
             up.data(bytes(data[off:off + PACKET]))
         up.expect(RSP_DONE if i == len(parts) - 1 else RSP_PART_DONE, timeout=30)
@@ -235,7 +238,7 @@ def main():
         return
     try:
         send(parts, os.environ.get("MAC", UPDATER_MAC), args.pace_ms / 1000)
-    except RuntimeError as e:
+    except Exception as e:   # includes D-Bus errors: a dropped link shows up as ATT 0x0e
         sys.exit("FAILED: %s\nThe updater stays available: fix the cause and send again." % e)
 
 
