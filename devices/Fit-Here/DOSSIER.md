@@ -42,6 +42,22 @@ Dump verificato: `dump/flash.final.bin`, fuori da git,
 SHA-256 `dc30a2e7619591e8bb42a365af6c3cc7f40a24f2f518adb669c0a8452ef4794f`.
 Sul dispositivo la demo ha poi sovrascritto `0x20000`–`0x26fff`: **quel file è l'unica copia**.
 
+## Ripartire da un altro PC
+
+Il dump è in git solo cifrato: `dump-2026-11-09.tar.gz.gpg` (AES256, password in possesso
+dell'utente, non nel repo e non in chat). `dump/` è ignorata da git e sul nuovo PC non esiste.
+
+```shell
+# dalla radice del repo; gpg chiede la password
+mkdir -p devices/Fit-Here/dump
+gpg -d devices/Fit-Here/dump-2026-11-09.tar.gz.gpg | tar xzf - -C devices/Fit-Here/dump
+sha256sum devices/Fit-Here/dump/flash.final.bin   # deve coincidere con l'hash qui sopra
+```
+
+Servono anche `gpg`, Docker (`firmware/build.sh` scarica da solo l'SDK), `bluez`, `python3-dbus`,
+`python3-gi`, il dongle CSR e il braccialetto. BlueZ del nuovo PC non conosce i dispositivi: fare
+una scansione con `tools/scan.py` prima di `phy_ota.py` o `phy_flash.py`.
+
 ## Comportamento dell'updater V3.0.7
 
 Differenze dal sorgente SDK, verificate sul dispositivo:

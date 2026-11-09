@@ -10,4 +10,8 @@
   `MSLM707`.
 - Prima di qualunque comando OTA che scrive o cancella, leggere la sezione OTA del README del
   dispositivo: alcuni comandi (es. `01` nell'updater `PPlusOTA` del Fit-Here) cancellano subito la
-  tabella dell'app.
+  tabella dell'app e il banco app.
+- **Lavoro in corso sul Fit-Here: all'inizio della sessione leggere `devices/Fit-Here/TODO.md`.** Se
+  `devices/Fit-Here/dump/flash.final.bin` non esiste (un PC nuovo), chiedere subito all'utente di
+  ripristinare il dump da `dump-2026-11-09.tar.gz.gpg`, procedura in `devices/Fit-Here/DOSSIER.md`.
+  La password la digita l'utente a `gpg`: non chiederla in chat.

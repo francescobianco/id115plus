@@ -5,14 +5,16 @@ Contesto: [`DOSSIER.md`](DOSSIER.md). Prima di qualunque comando OTA che scrive:
 
 ## Prima di iniziare
 
+- [ ] **Se `devices/Fit-Here/dump/flash.final.bin` non esiste: ripristinare il dump.** Su un PC nuovo
+      è così. Procedura nel dossier, sezione "Ripartire da un altro PC". La password la inserisce
+      l'utente a `gpg`, non va scritta in chat.
+- [ ] Sul nuovo PC: `gpg`, Docker, `bluez`, `python3-dbus`, `python3-gi`.
 - [ ] Attaccare il dongle CSR `00:1A:7D:DA:71:13` e tenere il braccialetto vicino.
 - [ ] `systemctl --user stop btedge wrish` (a fine lavoro: `start`).
 - [ ] Controllare che si veda `FH-DEMO`: `tools/scan.py 10`. Se non si vede, batteria scarica.
 
 ## Subito: la rete di sicurezza
 
-- [ ] **Copiare `dump/flash.final.bin` fuori dal PC**: è l'unica copia di quel che resta dello stock.
-      SHA-256 nel dossier.
 - [ ] **Ricarica**: metterlo sul caricatore con la demo attiva e vedere se il livello sale. Serve
       leggere la tensione vera, oggi non misurata (la batteria BLE della demo è un contatore).
 - [ ] **Ritorno all'updater**: `MAC=C0:00:A1:B1:02:64 tools/phy_ota.py 4c500002=04`, deve comparire
