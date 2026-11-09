@@ -131,8 +131,12 @@ ancora provato sul dispositivo. Numeri di pin: enum `gpio_pin_e` (`P14`=8, `P15`
 Batteria: `V_batt ≈ V_adc × 5,5454` (costante `55454` in unità di 0,1 mV, unità dedotta dalle soglie).
 Livello `(v - 34500) × 100 / 7300`: 0 % a 3,45 V, 100 % da 4,18 V, letture sotto 2,5 V scartate.
 
-Non trovati: pin del display e del tasto. Il driver del display passa da funzioni in SRAM
-(`0x1fff681c`, `0x1fff68b0`), cioè nella parte dello stock persa.
+Display: TFT 80×160, pixel a 16 bit (controllo dei limiti e buffer di `uint16` nel codice XIP).
+Inizializzazione `0x1fff68b0`, finestra `0x1fff681c` e invio pixel `0x1fff5ef8` sono nella parte
+SRAM persa, quindi i pin non si ricavano dal dump. Il PWM canale 0 nel codice XIP è il vibro (`P23`),
+non la retroilluminazione.
+
+Non trovato nemmeno il pin del tasto.
 
 ## Strumenti
 
