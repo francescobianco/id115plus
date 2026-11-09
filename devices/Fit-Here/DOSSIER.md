@@ -12,7 +12,7 @@ non si può ripristinare: della flash originale resta il dump, senza la parte SR
 | Sul dispositivo ora | demo `FH-DEMO`, `C0:00:A1:B1:02:64` |
 | Updater | `PPlusOTA` V3.0.7, `C0:00:A1:B1:02:62`, intatto |
 | App originale (MAC) | `C0:00:A1:B1:02:61`, cancellata |
-| Chip | PhyPlus PHY62xx, 512 KB (il dump non si ripete a metà: da ricontrollare) |
+| Chip | PhyPlus PHY62xx, 512 KB (la seconda metà del dump è diversa dalla prima) |
 | Prova di funzionamento | 4 vibrazioni da 500 ms su comando BLE, sentite il 2026-11-09 |
 
 ## Cosa è dimostrato
