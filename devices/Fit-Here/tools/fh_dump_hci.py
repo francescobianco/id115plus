@@ -5,13 +5,17 @@ usage: sudo python3 fh_dump_hci.py out.bin [hci-index]
 
 BlueZ keeps the controller's duplicate filter on, and with a fixed address that lets through
 about one frame per scan, so fh_dump_rx.py cannot keep up. Needs root for the raw socket.
-Close anything else that scans (GNOME Bluetooth panel, fh_dump_rx.py). Stop with Ctrl+C.
-Progress goes to out.bin and out.bin.seen, shared with fh_dump_rx.py.
+
+While it runs bluetoothd is STOPPED and the adapter reset, because pending LE connections make
+the controller refuse scan commands (status 0x0c): every Bluetooth device on this adapter drops
+until the end. bluetoothd is started again on exit. Close the GNOME Bluetooth panel first.
+Stop with Ctrl+C. Progress goes to out.bin and out.bin.seen, shared with fh_dump_rx.py.
 """
 import importlib.util
 import os
 import socket
 import struct
+import subprocess
 import sys
 import time
 
@@ -78,6 +82,10 @@ def main():
     path, dev = sys.argv[1], int(sys.argv[2]) if len(sys.argv) == 3 else 0
     col = _rx.Collector()
     col.load(path)
+    subprocess.run(["systemctl", "stop", "bluetooth.service"], check=False)
+    subprocess.run(["hciconfig", "hci%d" % dev, "down"], check=False)
+    subprocess.run(["hciconfig", "hci%d" % dev, "up"], check=True)
+    time.sleep(1)
     sock = socket.socket(socket.AF_BLUETOOTH, socket.SOCK_RAW, socket.BTPROTO_HCI)
     sock.bind((dev,))
     sock.setsockopt(SOL_HCI, HCI_FILTER,
@@ -104,10 +112,11 @@ def main():
                 print("%s  %.1f frames/s  all adv reports %d  blocks %d/%d  confirmed %d  conflicts %d"
                       % (time.strftime("%H:%M:%S"), (col.frames - last_frames) / (time.time() - last),
                          stats["reports"], got, _rx.BLOCKS, ok, col.conflicts), flush=True)
-                stats["reports"] = 0
+                reports, stats["reports"] = stats["reports"], 0
                 col.save(path)
                 last, last_frames = time.time(), col.frames
-                start_scan(sock)   # bluetoothd may have changed the scan under us
+                if not reports:
+                    start_scan(sock)
     except KeyboardInterrupt:
         pass
     finally:
@@ -115,6 +124,7 @@ def main():
         col.save(path)
         got, ok = col.counts()
         print("saved %s: blocks %d/%d, confirmed %d" % (path, got, _rx.BLOCKS, ok))
+        subprocess.run(["systemctl", "start", "bluetooth.service"], check=False)
 
 
 if __name__ == "__main__":
