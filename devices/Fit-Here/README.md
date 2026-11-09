@@ -127,5 +127,4 @@ Dipendenze: `python3-dbus`, `python3-gi` (BlueZ via D-Bus, come `../../id115plus
 
 ## Prossimi passi
 
-- Backup completo della flash: via UART (sicuro, ~35 min) o con un dumper OTA in una zona libera.
-- Decodificare il protocollo `18D0`/`0x5A` (serve l'APK "Fit-here").
+Stato e storia in [`DOSSIER.md`](DOSSIER.md), lista di lavoro in [`TODO.md`](TODO.md).
