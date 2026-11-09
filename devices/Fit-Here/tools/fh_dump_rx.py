@@ -26,6 +26,7 @@ class Collector:
         self.seen = bytearray(BLOCKS)
         self.conflicts = 0
         self.frames = 0
+        self.others = {}   # (block, payload) -> receptions that disagree with the stored data
 
     def feed(self, frame):
         """frame: the 27 bytes after the company id (index LE, pass, 24 bytes of flash)."""
@@ -37,8 +38,13 @@ class Collector:
         self.frames += 1
         off, payload = i * BLOCK, bytes(frame[3:])
         if self.seen[i] and self.data[off:off + BLOCK] != payload:
+            # keep what the majority says: a frame can go out while the dumper is rewriting it
             self.conflicts += 1
-            self.seen[i] = 0
+            n = self.others.get((i, payload), 0) + 1
+            self.others[(i, payload)] = n
+            if n <= self.seen[i]:
+                return
+            self.seen[i] = n - 1
         self.data[off:off + BLOCK] = payload
         self.seen[i] = min(self.seen[i] + 1, 255)
 
