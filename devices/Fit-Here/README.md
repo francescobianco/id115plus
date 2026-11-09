@@ -97,6 +97,22 @@ Riferimenti: sorgenti SDK in
   (andrebbe ricostruita solo la tabella). Non sappiamo ancora quali zone usa lo stock.
 - Rete di sicurezza: il loader UART della ROM PHY62xx (P09 TX, P10 RX, TM) non si può cancellare.
 
+## Firmware nostro
+
+`firmware/demo` (verificato il 2026-11-09): si annuncia come `FH-DEMO` a `C0:00:A1:B1:02:64`, il
+Battery Level è un contatore (+1 al secondo), sul controllo `4c500002` risponde a `20 pp lo hi`
+(impulso sul pin) e `04` (ritorno all'updater, non ancora provato).
+
+Pin noti: **vibro `P23`, attivo alto** (trovato con gli impulsi). Sull'LP715 `P23` controlla la
+carica e il vibro è `P03`: i pin dell'LP715 non valgono qui. Provati senza effetti visibili: `P00`,
+`P01`, `P02`, `P03`, `P14`, `P15`, `P16`, `P18`, `P20`, `P26`.
+
+```shell
+firmware/build.sh demo
+tools/phy_flash.py firmware/demo/_build/fh_demo.hex --confine 0x11000:0x27000 --yes   # dall'updater
+MAC=C0:00:A1:B1:02:64 tools/phy_ota.py 4c500002=2017f401                              # vibra 500 ms
+```
+
 ## Strumenti
 
 ```shell
