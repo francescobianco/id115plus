@@ -11,17 +11,20 @@ Contesto: [`DOSSIER.md`](DOSSIER.md). Prima di qualunque comando OTA che scrive:
 - [ ] Sul nuovo PC: `gpg`, Docker, `bluez`, `python3-dbus`, `python3-gi`.
 - [ ] Sul portatile si usa il Bluetooth di bordo: tenere il braccialetto vicino e controllare RSSI
       (verso -60 dBm) e tenuta del collegamento prima di qualunque scrittura OTA.
-- [ ] Se ci sono `btedge` o `wrish` attivi: `systemctl --user stop btedge wrish` (poi `start`).
+- [ ] Se sono attivi, fermare `wrish` (`systemctl --user stop wrish`) e `btedge`, che sul portatile è
+      un servizio di sistema (`sudo systemctl stop btedge`). A fine lavoro: `start`.
 - [ ] Controllare che si veda `FH-DEMO`: `tools/scan.py 10`. Se non si vede, batteria scarica.
 
 ## Subito: la rete di sicurezza
 
-- [ ] **Ricarica**: metterlo sul caricatore con la demo attiva e vedere se il livello sale. Serve
-      leggere la tensione vera, oggi non misurata (la batteria BLE della demo è un contatore).
-- [ ] **Ritorno all'updater**: `MAC=C0:00:A1:B1:02:64 tools/phy_ota.py 4c500002=04`, deve comparire
-      `PPlusOTA`. Poi `MAC=C0:00:A1:B1:02:62 tools/phy_ota.py 5833ff02=0401` per tornare alla demo.
-- [ ] **Watchdog**: nuova build con un comando che blocca il firmware, verificare che finisca in
-      `PPlusOTA`. Finché non è provato, ogni firmware nuovo può richiedere di aprirlo se si blocca.
+- [ ] **Ricarica**: non si può verificare con la demo attuale, la cui batteria BLE è un contatore.
+      Serve prima trovare il pin della batteria nel codice stock e leggere la tensione via ADC.
+- [x] **Ritorno all'updater**: `MAC=C0:00:A1:B1:02:64 tools/phy_ota.py 4c500002=04` porta a
+      `PPlusOTA`, poi `MAC=C0:00:A1:B1:02:62 tools/phy_ota.py 5833ff02=0401` torna alla demo.
+      Verificato il 2026-11-09.
+- [x] **Watchdog**: il comando `7f a5` blocca il ciclo principale, il braccialetto ricompare da
+      solo come `PPlusOTA` dopo circa 9 s. Verificato il 2026-11-09. Copre solo i blocchi del ciclo
+      principale con il watchdog già avviato.
 
 ## Poi: hardware
 

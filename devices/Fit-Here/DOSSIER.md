@@ -22,12 +22,16 @@ non si può ripristinare: della flash originale resta il dump, senza la parte SR
 - Vibro su **`P23`**, attivo alto. Sull'LP715 quel pin è il controllo carica: i pin dell'LP715 non
   valgono qui.
 - Dumper a beacon senza host BLE: tutta la flash letta con ogni blocco confermato due volte.
+- Il comando `04` della demo riporta a `PPlusOTA`, e `04 01` dall'updater torna alla demo.
+- Il watchdog: dopo il comando di blocco `7f a5` il braccialetto ricompare da solo come `PPlusOTA`
+  in circa 9 s, quindi il registro `0x4000f034` sopravvive al reset.
+- OTA e collegamento col Bluetooth di bordo del portatile (Intel, RSSI circa -65 dBm): immagine
+  completa in 38 s, e 53 letture su 53 in 2 minuti senza cadute.
 
 ## Cosa non è dimostrato
 
-- Il comando `04` della demo (ritorno all'updater).
-- Il watchdog e la sopravvivenza del registro `0x4000f034` a un suo reset.
 - La ricarica sotto il nostro firmware. Se non funziona, a batteria scarica servirà aprirlo.
+- Un blocco prima che `app_init` avvii il watchdog, o un'immagine che non parte affatto.
 - Che i pin senza effetto siano davvero inutili: si è guardato solo vibrazione o luce.
 
 ## Stock: cosa è successo
@@ -48,14 +52,11 @@ Il dump è in git solo cifrato: `dump-2026-11-09.tar.gz.gpg` (AES256, password i
 dell'utente, non nel repo e non in chat). `dump/` è ignorata da git e sul nuovo PC non esiste.
 
 ```shell
-# dalla radice del repo; gpg chiede la password
-mkdir -p devices/Fit-Here/dump
-gpg -d devices/Fit-Here/dump-2026-11-09.tar.gz.gpg | tar xzf - -C devices/Fit-Here/dump
-sha256sum devices/Fit-Here/dump/flash.final.bin   # deve coincidere con l'hash qui sopra
+devices/Fit-Here/tools/restore_dump.sh   # gpg chiede la password, lo script verifica l'hash
 ```
 
 Servono anche `gpg`, Docker (`firmware/build.sh` scarica da solo l'SDK), `bluez`, `python3-dbus`,
-`python3-gi` e il braccialetto. Il portatile usa il Bluetooth di bordo, mai provato finora: prima di
+`python3-gi` e il braccialetto. Il portatile usa il Bluetooth di bordo: prima di
 scrivere controllare il segnale (`tools/scan.py`, RSSI verso -60 dBm a braccialetto vicino) e che
 una connessione alla demo regga. BlueZ del nuovo PC non conosce i dispositivi: fare
 una scansione con `tools/scan.py` prima di `phy_ota.py` o `phy_flash.py`.

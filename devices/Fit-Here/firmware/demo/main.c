@@ -5,6 +5,7 @@
 // Writes to the control characteristic 4c500002-3731-3500-b000-000000000000:
 //   04             back to the PPlusOTA updater
 //   20 pp lo hi    drive pin Ppp (decimal number as hex, e.g. 03) high for lo + hi*256 ms, max 500
+//   7f a5          hang in the main loop, to test that the watchdog resets the app
 //
 // Safety: the OTA mode is armed first, so any later soft reset lands in the updater, and the
 // watchdog resets a hung app. P07 (test mode) and P09/P10 (UART) can't be driven.
@@ -31,6 +32,7 @@ static const struct {
 };
 
 static volatile bool want_updater;
+static volatile bool want_hang;
 static volatile bool want_pulse;
 static volatile uint8 pulse_number;
 static volatile uint16 pulse_ms;
@@ -44,6 +46,8 @@ static uint8 counter;
 static void on_command(const uint8 *data, uint8 len) {
     if (data[0] == 0x04) {
         want_updater = true;
+    } else if (data[0] == 0x7f && len == 2 && data[1] == 0xa5) {
+        want_hang = true;
     } else if (data[0] == 0x20 && len == 4 && !want_pulse) {
         pulse_number = data[1];
         pulse_ms = data[2] | data[3] << 8;
@@ -78,7 +82,9 @@ void app_update(void) {
     hal_watchdog_feed();
     if (want_updater)
         hal_system_soft_reset();
-    if (pulsing && hal_systick() - pulse_start >= pulse_ticks) {
+    while (want_hang)
+        ;
+    if (pulsing &&hal_systick() - pulse_start >= pulse_ticks) {
         hal_gpio_write(pulse_pin, 0);
         hal_gpio_pin_init(pulse_pin, GPIO_INPUT);
         hal_gpio_pull_set(pulse_pin, GPIO_FLOATING);
