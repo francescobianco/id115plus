@@ -1,7 +1,12 @@
 #!/usr/bin/env python3
 """Collect the dumper's broadcast from a raw HCI socket, with duplicate filtering off.
 
-usage: sudo python3 fh_dump_hci.py out.bin [hci-index]
+usage: sudo python3 fh_dump_hci.py out.bin [hci-index] [--restart-dumper]
+
+--restart-dumper first asks PPlusOTA to boot the dumper again, for when it finished its passes.
+
+This controller ignores "duplicate filter off" and reports one frame per address until the scan
+is restarted, so the scan is restarted after every dumper frame.
 
 BlueZ keeps the controller's duplicate filter on, and with a fixed address that lets through
 about one frame per scan, so fh_dump_rx.py cannot keep up. Needs root for the raw socket.
@@ -33,6 +38,8 @@ OCF_SCAN_PARAMS, OCF_SCAN_ENABLE = 0x0b, 0x0c
 OCF_EXT_SCAN_PARAMS, OCF_EXT_SCAN_ENABLE = 0x41, 0x42
 ADDR = bytes.fromhex("6302b1a100c0")   # C0:00:A1:B1:02:63, little endian
 SCAN_MS = 0x0010                       # 10 ms interval and window: always listening
+UPDATER_MAC = "C0:00:A1:B1:02:62"
+REARM_S = 0.15                         # restart the scan after this long without a dumper frame
 
 stats = {"reports": 0}
 
@@ -79,18 +86,53 @@ def frames_in_event(pkt):
             i += 1 + ln
 
 
-def command(sock, ocf, params=b""):
+def command(sock, ocf, params=b"", on_frame=None):
     """Send an LE command and return its status, or None if no answer came in 1 s."""
     sock.send(struct.pack("<BHB", 1, 0x08 << 10 | ocf, len(params)) + params)
     end = time.time() + 1
     while time.time() < end:
         try:
-            status = command_status(sock.recv(300))
+            pkt = sock.recv(300)
         except socket.timeout:
             continue
+        status = command_status(pkt)
         if status and status[0] == ocf:
             return status[1]
+        if on_frame:
+            for frame in frames_in_event(pkt):
+                on_frame(frame)
     return None
+
+
+def rearm(sock, mode, on_frame):
+    """Scan off and on: clears the controller's duplicate filter. Returns the enable status."""
+    if mode == "extended":
+        command(sock, OCF_EXT_SCAN_ENABLE, struct.pack("<BBHH", 0, 0, 0, 0), on_frame)
+        return command(sock, OCF_EXT_SCAN_ENABLE, struct.pack("<BBHH", 1, 0, 0, 0), on_frame)
+    command(sock, OCF_SCAN_ENABLE, b"\x00\x00", on_frame)
+    return command(sock, OCF_SCAN_ENABLE, b"\x01\x00", on_frame)
+
+
+def restart_dumper():
+    """Ask the updater to boot the dumper again (needs bluetoothd, so before stopping it)."""
+    tools = os.path.dirname(os.path.abspath(__file__))
+    env = dict(os.environ, MAC=UPDATER_MAC, PYTHONDONTWRITEBYTECODE="1")
+    for attempt in range(8):
+        subprocess.run(["bluetoothctl", "disconnect", UPDATER_MAC], capture_output=True)
+        time.sleep(2)
+        subprocess.run([sys.executable, os.path.join(tools, "scan.py"), "5"], capture_output=True,
+                       env=env, timeout=20, check=False)
+        try:
+            r = subprocess.run([sys.executable, os.path.join(tools, "phy_ota.py"), "5833ff02=0401"],
+                               capture_output=True, text=True, env=env, timeout=30, check=False)
+        except subprocess.TimeoutExpired:
+            continue
+        if "008a" in r.stdout:
+            subprocess.run(["bluetoothctl", "disconnect", UPDATER_MAC], capture_output=True)
+            print("dumper restarted", flush=True)
+            return True
+        print("restart attempt %d failed" % (attempt + 1), flush=True)
+    return False
 
 
 def start_scan(sock):
@@ -120,11 +162,14 @@ def stop_scan(sock, mode):
 
 
 def main():
-    if len(sys.argv) not in (2, 3):
+    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    if len(args) not in (1, 2):
         sys.exit(__doc__)
-    path, dev = sys.argv[1], int(sys.argv[2]) if len(sys.argv) == 3 else 0
+    path, dev = args[0], int(args[1]) if len(args) == 2 else 0
     col = _rx.Collector()
     col.load(path)
+    if "--restart-dumper" in sys.argv and not restart_dumper():
+        sys.exit("could not reach PPlusOTA: is the dumper already running?")
     subprocess.run(["systemctl", "stop", "bluetooth.service"], check=False)
     mode = None
     try:
@@ -144,32 +189,29 @@ def main():
         print("scanning on hci%d (%s commands), Ctrl+C to stop" % (dev, mode), flush=True)
 
         last, last_frames, last_reports = time.time(), col.frames, 0
-        heard, heard_at, restarts = 0, time.time(), 0
-        sock.settimeout(0.5)
+        armed_at, restarts, failed = time.time(), 0, 0
+        sock.settimeout(0.03)
         try:
             while True:
+                got = False
                 try:
                     for frame in frames_in_event(sock.recv(300)):
                         col.feed(frame)
+                        got = True
                 except socket.timeout:
                     pass
-                if stats["reports"] != heard:
-                    heard, heard_at = stats["reports"], time.time()
-                elif time.time() - heard_at > 2:
-                    # the scan stops on its own after a few seconds: start it again
-                    try:
-                        start_scan(sock)
-                        restarts += 1
-                    except RuntimeError as e:
-                        print("restart failed:", e, flush=True)
-                    heard_at = time.time()
+                if got or time.time() - armed_at > REARM_S:
+                    if rearm(sock, mode, col.feed):
+                        failed += 1
+                    restarts += 1
+                    armed_at = time.time()
                 if time.time() - last >= 15:
-                    got, ok = col.counts()
-                    print("%s  %.1f frames/s  all adv reports %d  restarts %d  blocks %d/%d  confirmed %d  conflicts %d"
+                    blocks, ok = col.counts()
+                    print("%s  %.1f frames/s  all adv reports %d  restarts %d (failed %d)  blocks %d/%d  confirmed %d  conflicts %d"
                           % (time.strftime("%H:%M:%S"),
                              (col.frames - last_frames) / (time.time() - last),
-                             stats["reports"] - last_reports, restarts,
-                             got, _rx.BLOCKS, ok, col.conflicts), flush=True)
+                             stats["reports"] - last_reports, restarts, failed,
+                             blocks, _rx.BLOCKS, ok, col.conflicts), flush=True)
                     col.save(path)
                     last, last_frames, last_reports = time.time(), col.frames, stats["reports"]
         except KeyboardInterrupt:
