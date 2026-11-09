@@ -55,7 +55,9 @@ sha256sum devices/Fit-Here/dump/flash.final.bin   # deve coincidere con l'hash q
 ```
 
 Servono anche `gpg`, Docker (`firmware/build.sh` scarica da solo l'SDK), `bluez`, `python3-dbus`,
-`python3-gi`, il dongle CSR e il braccialetto. BlueZ del nuovo PC non conosce i dispositivi: fare
+`python3-gi` e il braccialetto. Il portatile usa il Bluetooth di bordo, mai provato finora: prima di
+scrivere controllare il segnale (`tools/scan.py`, RSSI verso -60 dBm a braccialetto vicino) e che
+una connessione alla demo regga. BlueZ del nuovo PC non conosce i dispositivi: fare
 una scansione con `tools/scan.py` prima di `phy_ota.py` o `phy_flash.py`.
 
 ## Comportamento dell'updater V3.0.7

@@ -9,8 +9,9 @@ Contesto: [`DOSSIER.md`](DOSSIER.md). Prima di qualunque comando OTA che scrive:
       è così. Procedura nel dossier, sezione "Ripartire da un altro PC". La password la inserisce
       l'utente a `gpg`, non va scritta in chat.
 - [ ] Sul nuovo PC: `gpg`, Docker, `bluez`, `python3-dbus`, `python3-gi`.
-- [ ] Attaccare il dongle CSR `00:1A:7D:DA:71:13` e tenere il braccialetto vicino.
-- [ ] `systemctl --user stop btedge wrish` (a fine lavoro: `start`).
+- [ ] Sul portatile si usa il Bluetooth di bordo: tenere il braccialetto vicino e controllare RSSI
+      (verso -60 dBm) e tenuta del collegamento prima di qualunque scrittura OTA.
+- [ ] Se ci sono `btedge` o `wrish` attivi: `systemctl --user stop btedge wrish` (poi `start`).
 - [ ] Controllare che si veda `FH-DEMO`: `tools/scan.py 10`. Se non si vede, batteria scarica.
 
 ## Subito: la rete di sicurezza
