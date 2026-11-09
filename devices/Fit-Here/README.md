@@ -63,8 +63,10 @@ Riferimenti: sorgenti SDK in
 
 ### OTA reale (verificato il 2026-11-09)
 
-- `01 <n> ff` risponde `00 81`. Da quel momento lo stock non parte più finché non viene riscritta
-  la tabella a `0x3000`.
+- **`01 <n> ff` risponde `00 81` e cancella più della tabella.** Dopo il primo `01` il banco app
+  `0x11000`–`0x1ffff` risultava vuoto e la parte SRAM dello stock non si trova più in tutta la
+  flash: questa build (V3.0.7) cancella quasi certamente anche il banco, a differenza degli SDK
+  più recenti. Lo stock non si può quindi ripristinare dal dump.
 - La partition-info deve essere di **16 byte** (`02`, indice, flash, run, size, CRC **u16**): la
   forma da 18 byte degli SDK più recenti viene ignorata in silenzio.
 - La partition-info viene solo validata: la flash si tocca solo dopo l'ultimo pacchetto dati.
@@ -72,9 +74,22 @@ Riferimenti: sorgenti SDK in
   risponde `10` (`INVALID_ADDR`). Partizioni SRAM nel banco a offset `0xB000`: scritte senza errori.
 - Il dumper in `firmware/dumper` è tutto in SRAM e occupa solo `0x1c000`–`0x1efff`.
 
-### Come scrive la flash (dal sorgente SDK, non ancora verificato su questa build)
+### Mappa della flash (dal dump del 2026-11-09, `dump/`, fuori da git)
 
-- `01` (START) cancella solo il settore `0x3000` (tabella app).
+| Indirizzo | Contenuto |
+|---|---|
+| `0x02000` | boot table dell'updater |
+| `0x03000` | tabella app (ora quella del dumper) |
+| `0x04000` | MAC |
+| `0x05000`–`0x101ff` | updater `PPlusOTA` (SRAM da `0x5000`, XIP da `0xa000` e `0x10000`) |
+| `0x11000`–`0x1ffff` | banco app: svuotato da `01`, ora il dumper a `0x1c000` |
+| `0x20000`–`0x39aff` | codice XIP dello stock (veneer in testa) |
+| `0x3c000`–`0x3e0ff` | settori con intestazione `1103c000`, probabilmente il file system |
+| `0x40000`–`0x5d8ff` | risorse (a `0x47800` il font `PHY_FONT`) |
+
+### Come scrive la flash (dal sorgente SDK, non vale per questa build)
+
+- `01` (START) cancella solo il settore `0x3000` (tabella app) negli SDK recenti, non qui.
 - Ogni partizione cancella e scrive solo i propri settori da 4 KB: le partizioni XIP
   (run = flash) vanno all'indirizzo scelto da noi in `0x11003000`–`0x1107ffff`, quelle SRAM nel
   banco app a un offset scelto da noi. A fine OTA riscrive la tabella a `0x3000`.
