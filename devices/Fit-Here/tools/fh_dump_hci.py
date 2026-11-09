@@ -143,7 +143,9 @@ def main():
             sys.exit("cannot scan: %s" % e)
         print("scanning on hci%d (%s commands), Ctrl+C to stop" % (dev, mode), flush=True)
 
-        last, last_frames = time.time(), col.frames
+        last, last_frames, last_reports = time.time(), col.frames, 0
+        heard, heard_at, restarts = 0, time.time(), 0
+        sock.settimeout(0.5)
         try:
             while True:
                 try:
@@ -151,15 +153,25 @@ def main():
                         col.feed(frame)
                 except socket.timeout:
                     pass
+                if stats["reports"] != heard:
+                    heard, heard_at = stats["reports"], time.time()
+                elif time.time() - heard_at > 2:
+                    # the scan stops on its own after a few seconds: start it again
+                    try:
+                        start_scan(sock)
+                        restarts += 1
+                    except RuntimeError as e:
+                        print("restart failed:", e, flush=True)
+                    heard_at = time.time()
                 if time.time() - last >= 15:
                     got, ok = col.counts()
-                    print("%s  %.1f frames/s  all adv reports %d  blocks %d/%d  confirmed %d  conflicts %d"
+                    print("%s  %.1f frames/s  all adv reports %d  restarts %d  blocks %d/%d  confirmed %d  conflicts %d"
                           % (time.strftime("%H:%M:%S"),
                              (col.frames - last_frames) / (time.time() - last),
-                             stats["reports"], got, _rx.BLOCKS, ok, col.conflicts), flush=True)
+                             stats["reports"] - last_reports, restarts,
+                             got, _rx.BLOCKS, ok, col.conflicts), flush=True)
                     col.save(path)
-                    last, last_frames = time.time(), col.frames
-                    stats["reports"] = 0
+                    last, last_frames, last_reports = time.time(), col.frames, stats["reports"]
         except KeyboardInterrupt:
             pass
         stop_scan(sock, mode)
