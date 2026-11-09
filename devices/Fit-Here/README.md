@@ -136,6 +136,28 @@ Inizializzazione `0x1fff68b0`, finestra `0x1fff681c` e invio pixel `0x1fff5ef8` 
 SRAM persa, quindi i pin non si ricavano dal dump. Il PWM canale 0 nel codice XIP è il vibro (`P23`),
 non la retroilluminazione.
 
+**`P34` comanda la luce dello schermo, attivo alto** (prova fisica del 2026-11-09: 2 impulsi casuali
+alla cieca, 2 lampeggi contati). Probabilmente è la retroilluminazione. `P33` alla stessa prova: 4
+impulsi, nessun lampeggio.
+
+A luce accesa il pannello è nero uniforme. La demo ha un comando di ricerca, `30 rr ss mm` (RST, SCK,
+MOSI, `ff` = tutti), che manda `11`, `21`, `29` tenendo bassi gli altri candidati (`P00`–`P03`, `P11`,
+`P24`–`P27`, `P31`–`P33`). Durante le sequenze di tentativi è comparsa più volte, per un attimo, una
+**freccia verso l'alto** (verde, grigia o forse rossa), anche nella prova con RST `P01`. I comandi non
+la disegnano, quindi è probabilmente il contenuto rimasto nella memoria del pannello.
+
+**RST `P01`, SCK `P31`, MOSI `P25`** la fa comparire e restare fissa, e reinviando la stessa combinazione
+scompare e riappare subito (prova a mano con `tools/fh_display_search.py`, 2026-11-09). Con MOSI `P33`
+o `P02` non compare, e un riavvio (`04`) non la mostra.
+
+**DC `P00`** (2026-11-09): con il comando `31` ogni candidato disegna una banda in una riga diversa, e
+ripassando con un altro colore la banda cambia esattamente al passo di `P00`, nella riga prevista per
+quel pin (136). Il controller risponde a `2a`, `2b`, `2c`, `3a` con pixel a 16 bit. Il rosso `f800`, a
+inversione spenta, si vede giallo: compatibile con ordine BGR e pannello a colori invertiti (IPS), da
+verificare. CS non trovato: finora è sempre rimasto basso, forse è fisso a massa. Non è ancora una
+inizializzazione completa del controller. Cautela nei test: le vibrazioni possono far tremolare lo schermo, e un conteggio di lampeggi
+fatto subito dopo è falsato.
+
 Non trovato nemmeno il pin del tasto.
 
 ## Strumenti
