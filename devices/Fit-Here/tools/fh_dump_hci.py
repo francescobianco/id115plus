@@ -26,6 +26,17 @@ ADDR = bytes.fromhex("6302b1a100c0")   # C0:00:A1:B1:02:63, little endian
 SCAN_MS = 0x0010                       # 10 ms interval and window: always listening
 
 
+stats = {"reports": 0}
+HCI_CMD_COMPLETE = 0x0e
+
+
+def command_status(pkt):
+    """(ocf, status) of an LE command-complete event, or None."""
+    if len(pkt) >= 7 and pkt[0] == HCI_EVENT_PKT and pkt[1] == HCI_CMD_COMPLETE and pkt[5] >> 2 == 0x08:
+        return (pkt[4] | pkt[5] << 8) & 0x3ff, pkt[6]
+    return None
+
+
 def frames_in_event(pkt):
     """Yield the 27-byte dumper frames in one raw HCI event packet."""
     if len(pkt) < 5 or pkt[0] != HCI_EVENT_PKT or pkt[1] != EVT_LE_META or pkt[3] != LE_ADV_REPORT:
@@ -34,6 +45,7 @@ def frames_in_event(pkt):
     for _ in range(count):
         if pos + 9 > len(pkt):
             return
+        stats["reports"] += 1
         addr, dlen = pkt[pos + 2:pos + 8], pkt[pos + 8]
         data = pkt[pos + 9:pos + 9 + dlen]
         pos += 9 + dlen + 1
@@ -69,7 +81,8 @@ def main():
     sock = socket.socket(socket.AF_BLUETOOTH, socket.SOCK_RAW, socket.BTPROTO_HCI)
     sock.bind((dev,))
     sock.setsockopt(SOL_HCI, HCI_FILTER,
-                    struct.pack("<IIIH2x", 1 << HCI_EVENT_PKT, 0, 1 << (EVT_LE_META - 32), 0))
+                    struct.pack("<IIIH2x", 1 << HCI_EVENT_PKT, 1 << HCI_CMD_COMPLETE,
+                                1 << (EVT_LE_META - 32), 0))
     sock.settimeout(1)
     start_scan(sock)
     print("scanning on hci%d, Ctrl+C to stop" % dev, flush=True)
@@ -78,15 +91,20 @@ def main():
     try:
         while True:
             try:
-                for frame in frames_in_event(sock.recv(300)):
+                pkt = sock.recv(300)
+                status = command_status(pkt)
+                if status and status[0] in (0x0b, 0x0c) and status[1]:
+                    print("HCI LE command 0x%02x failed: status 0x%02x" % status, flush=True)
+                for frame in frames_in_event(pkt):
                     col.feed(frame)
             except socket.timeout:
                 pass
             if time.time() - last >= 15:
                 got, ok = col.counts()
-                print("%s  %.1f frames/s  blocks %d/%d  confirmed %d  conflicts %d"
+                print("%s  %.1f frames/s  all adv reports %d  blocks %d/%d  confirmed %d  conflicts %d"
                       % (time.strftime("%H:%M:%S"), (col.frames - last_frames) / (time.time() - last),
-                         got, _rx.BLOCKS, ok, col.conflicts), flush=True)
+                         stats["reports"], got, _rx.BLOCKS, ok, col.conflicts), flush=True)
+                stats["reports"] = 0
                 col.save(path)
                 last, last_frames = time.time(), col.frames
                 start_scan(sock)   # bluetoothd may have changed the scan under us
