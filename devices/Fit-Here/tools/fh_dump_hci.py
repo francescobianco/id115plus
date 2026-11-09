@@ -18,6 +18,7 @@ While it runs bluetoothd is STOPPED and the adapter reset, so nothing else chang
 every Bluetooth device on this adapter drops until the end. bluetoothd is started again on exit.
 Stop with Ctrl+C. Progress goes to out.bin and out.bin.seen, shared with fh_dump_rx.py.
 """
+import fcntl
 import importlib.util
 import os
 import socket
@@ -40,6 +41,8 @@ ADDR = bytes.fromhex("6302b1a100c0")   # C0:00:A1:B1:02:63, little endian
 SCAN_MS = 0x0010                       # 10 ms interval and window: always listening
 UPDATER_MAC = "C0:00:A1:B1:02:62"
 REARM_S = 0.15                         # restart the scan after this long without a dumper frame
+MAX_SILENT = 3                         # unanswered restarts before resetting the adapter
+USBDEVFS_RESET = 0x5514                # _IO('U', 20)
 
 stats = {"reports": 0}
 
@@ -154,6 +157,52 @@ def start_scan(sock):
     return "legacy"
 
 
+def open_scan(dev):
+    """Bring the adapter up, open the raw socket and start scanning. Returns (socket, mode)."""
+    subprocess.run(["hciconfig", "hci%d" % dev, "down"], check=False)
+    subprocess.run(["hciconfig", "hci%d" % dev, "up"], check=True)
+    time.sleep(1)
+    sock = socket.socket(socket.AF_BLUETOOTH, socket.SOCK_RAW, socket.BTPROTO_HCI)
+    sock.bind((dev,))
+    sock.setsockopt(SOL_HCI, HCI_FILTER,
+                    struct.pack("<IIIH2x", 1 << HCI_EVENT_PKT, 1 << HCI_CMD_COMPLETE,
+                                1 << (EVT_LE_META - 32), 0))
+    sock.settimeout(0.03)
+    return sock, start_scan(sock)
+
+
+def usb_reset(dev):
+    """Reset the adapter's USB device, the software version of unplugging it."""
+    interface = os.path.realpath("/sys/class/bluetooth/hci%d/device" % dev)
+    usb = os.path.dirname(interface)
+    with open(os.path.join(usb, "busnum")) as f:
+        bus = int(f.read())
+    with open(os.path.join(usb, "devnum")) as f:
+        num = int(f.read())
+    fd = os.open("/dev/bus/usb/%03d/%03d" % (bus, num), os.O_WRONLY)
+    try:
+        fcntl.ioctl(fd, USBDEVFS_RESET, 0)
+    finally:
+        os.close(fd)
+
+
+def recover(sock, dev):
+    """The controller stopped answering: reset it until scanning works again."""
+    sock.close()
+    while True:
+        try:
+            usb_reset(dev)
+            for _ in range(40):
+                if os.path.exists("/sys/class/bluetooth/hci%d" % dev):
+                    break
+                time.sleep(0.25)
+            time.sleep(2)
+            return open_scan(dev)
+        except (RuntimeError, OSError, subprocess.CalledProcessError) as e:
+            print("reset failed, retrying:", e, flush=True)
+            time.sleep(3)
+
+
 def stop_scan(sock, mode):
     if mode == "extended":
         command(sock, OCF_EXT_SCAN_ENABLE, struct.pack("<BBHH", 0, 0, 0, 0))
@@ -173,24 +222,14 @@ def main():
     subprocess.run(["systemctl", "stop", "bluetooth.service"], check=False)
     mode = None
     try:
-        subprocess.run(["hciconfig", "hci%d" % dev, "down"], check=False)
-        subprocess.run(["hciconfig", "hci%d" % dev, "up"], check=True)
-        time.sleep(1)
-        sock = socket.socket(socket.AF_BLUETOOTH, socket.SOCK_RAW, socket.BTPROTO_HCI)
-        sock.bind((dev,))
-        sock.setsockopt(SOL_HCI, HCI_FILTER,
-                        struct.pack("<IIIH2x", 1 << HCI_EVENT_PKT, 1 << HCI_CMD_COMPLETE,
-                                    1 << (EVT_LE_META - 32), 0))
-        sock.settimeout(1)
         try:
-            mode = start_scan(sock)
-        except RuntimeError as e:
+            sock, mode = open_scan(dev)
+        except (RuntimeError, OSError) as e:
             sys.exit("cannot scan: %s" % e)
         print("scanning on hci%d (%s commands), Ctrl+C to stop" % (dev, mode), flush=True)
 
         last, last_frames, last_reports = time.time(), col.frames, 0
-        armed_at, restarts, failed = time.time(), 0, 0
-        sock.settimeout(0.03)
+        armed_at, restarts, failed, silent, resets = time.time(), 0, 0, 0, 0
         try:
             while True:
                 got = False
@@ -200,11 +239,24 @@ def main():
                         got = True
                 except socket.timeout:
                     pass
-                if got or time.time() - armed_at > REARM_S:
-                    if rearm(sock, mode, col.feed):
-                        failed += 1
+                except OSError:
+                    silent = MAX_SILENT
+                if silent < MAX_SILENT and (got or time.time() - armed_at > REARM_S):
+                    try:
+                        st = rearm(sock, mode, col.feed)
+                    except OSError:
+                        st = None
+                    silent = silent + 1 if st is None else 0
+                    failed += 1 if st else 0
                     restarts += 1
                     armed_at = time.time()
+                if silent >= MAX_SILENT:
+                    print("adapter stopped answering: resetting it over USB", flush=True)
+                    col.save(path)
+                    sock, mode = recover(sock, dev)
+                    resets += 1
+                    silent, armed_at = 0, time.time()
+                    print("adapter back, resets so far: %d" % resets, flush=True)
                 if time.time() - last >= 15:
                     blocks, ok = col.counts()
                     print("%s  %.1f frames/s  all adv reports %d  restarts %d (failed %d)  blocks %d/%d  confirmed %d  conflicts %d"
@@ -216,7 +268,10 @@ def main():
                     last, last_frames, last_reports = time.time(), col.frames, stats["reports"]
         except KeyboardInterrupt:
             pass
-        stop_scan(sock, mode)
+        try:
+            stop_scan(sock, mode)
+        except OSError:
+            pass
         col.save(path)
         got, ok = col.counts()
         print("saved %s: blocks %d/%d, confirmed %d" % (path, got, _rx.BLOCKS, ok))
