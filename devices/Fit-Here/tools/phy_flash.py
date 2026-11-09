@@ -22,7 +22,8 @@ import time
 
 XIP_MIN = 0x11011000       # below this: boot table, app table, MAC, updater
 XIP_BASE = 0x11000000
-SRAM_MIN, SRAM_END = 0x1fff0000, 0x20000000
+SRAM_MIN = 0x1fff0000
+SRAM_END = 0x1fffb300      # the updater's own RAM starts here on the LP715 dump
 BANK_ADDR = 0x11011000     # SDK value for this layout, not read back from this device
 BANK_SIZE = 0xf000         # 60 KB, ends where XIP code starts on the LP715
 SECTOR = 0x1000
@@ -213,6 +214,8 @@ def main():
     ap.add_argument("--bank-offset", type=lambda s: int(s, 0), default=0,
                     help="where SRAM partitions go in the app bank (default 0: over the stock ones)")
     ap.add_argument("--flash-kb", type=int, default=512, choices=(256, 512))
+    ap.add_argument("--confine", metavar="LOW:HIGH",
+                    help="refuse the image if it erases flash outside LOW:HIGH (0x3000 excepted)")
     ap.add_argument("--pace-ms", type=int, default=15)
     ap.add_argument("--yes", action="store_true", help="really send: erases the app table")
     args = ap.parse_args()
@@ -221,6 +224,12 @@ def main():
     except ValueError as e:
         sys.exit("REFUSED: %s" % e)
     show(parts)
+    if args.confine:
+        low, high = (int(x, 0) for x in args.confine.split(":"))
+        outside = [s for s in erased_sectors(parts) if s != 0x3000 and not low <= s < high]
+        if outside:
+            sys.exit("REFUSED: erases outside the allowed range: "
+                     + " ".join("0x%05x" % s for s in outside))
     if not args.yes:
         print("dry run: nothing sent (--yes to send)")
         return
