@@ -56,7 +56,9 @@ Ogni fase è una flash e si chiude solo con la prova indicata.
 
 - [x] 10 s premuto, vibra, schermo rosso, rilascio, 3 tocchi brevi entro 5 s: si va all'updater.
 - [x] Provata da sola il 2026-11-10: annullamento senza tocchi, poi ingresso in `PPlusOTA`. La guardia
-      del tasto bloccato (30 s) è scritta ma non provata. Attiva a ogni avvio.
+      del tasto bloccato (30 s) è scritta ma non provata.
+- [ ] Dall'ultima flash è attiva a ogni avvio, ma non è stata riprovata: tenere premuto 12 s e verificare
+      vibrazione e schermo rosso, poi lasciare e aspettare il nero. Da fare per prima alla ripartenza.
 
 ### 5. MorseOS di base
 

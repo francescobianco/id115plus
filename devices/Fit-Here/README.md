@@ -127,7 +127,7 @@ diversamente, non sono provati sul dispositivo. Numeri di pin: enum `gpio_pin_e`
 | `P23` | vibro (noto): lo stock lo spegne come input con pull-down | coerente con la prova fisica |
 | `P18` SDA, `P20` SCL | I2C, dispositivo a `0x19`, probabile accelerometro | indirizzo letto, tipo dedotto |
 | `P32` SDA, `P33` SCL | secondo I2C, senza chiamanti diretti: forse codice inutilizzato | da verificare |
-| `P03` | solo un `hal_gpioin_disable` | ruolo ignoto |
+| `P03` | zona touch, attiva alta | **provato il 2026-11-10** |
 
 Batteria: `V_batt ≈ V_adc × 5,5454` (costante `55454` in unità di 0,1 mV, unità dedotta dalle soglie).
 Livello `(v - 34500) × 100 / 7300`: 0 % a 3,45 V, 100 % da 4,18 V, letture sotto 2,5 V scartate.

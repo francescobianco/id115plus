@@ -3,6 +3,9 @@
 Contesto: [`DOSSIER.md`](DOSSIER.md). Prima di qualunque comando OTA che scrive: sezione OTA del
 [`README.md`](README.md).
 
+**Si riparte da:** provare l'emergenza dopo un avvio normale, poi fase 5 di
+[`TODO_MORSEOS.md`](TODO_MORSEOS.md).
+
 ## Prima di iniziare
 
 - [ ] **Se `devices/Fit-Here/dump/flash.final.bin` non esiste: ripristinare il dump.** Su un PC nuovo
