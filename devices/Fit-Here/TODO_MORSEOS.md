@@ -26,7 +26,7 @@ Valgono per ogni flash.
 | Blocco del ciclo principale | watchdog verso l'updater | provato |
 | Firmware sbagliato, OTA interrotta | updater separato | provato |
 | Eccezione del processore | watchdog | provato |
-| Ciclo vivo, Bluetooth morto | emergenza col tasto | manca (fase 4) |
+| Ciclo vivo, Bluetooth morto | emergenza col touch | provato |
 | Blocco prima di `app_init` | non toccare l'avvio | solo per disciplina |
 | Batteria scarica senza ricarica | si ricarica col nostro firmware | provato, carica completa no |
 
@@ -54,9 +54,9 @@ Ogni fase è una flash e si chiude solo con la prova indicata.
 
 ### 4. Emergenza col tasto
 
-- [ ] 10 s premuto, schermo rosso, rilascio, 3 tocchi brevi entro 5 s: si va all'updater. Un tasto
-      bloccato non deve attivarla.
-- [ ] Prova da sola, prima di qualunque altro uso del tasto.
+- [x] 10 s premuto, vibra, schermo rosso, rilascio, 3 tocchi brevi entro 5 s: si va all'updater.
+- [x] Provata da sola il 2026-11-10: annullamento senza tocchi, poi ingresso in `PPlusOTA`. La guardia
+      del tasto bloccato (30 s) è scritta ma non provata. Attiva a ogni avvio.
 
 ### 5. MorseOS di base
 

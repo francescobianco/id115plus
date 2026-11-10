@@ -8,6 +8,8 @@
 //   21 vv          screen light on P34: 01 on, 00 off (held, unlike the pulses)
 //   22 pp lo hi    same as 20 but drives the pin low
 //   23             measure: notifies on 4c500003, one byte each: 23, P14 mV lo, hi (ffff = failed), P15
+//   25 01 / 25 00  emergency exit on the touch key on / off (on at boot): held 10 s = red screen; release,
+//                  then 3 taps under 400 ms within 5 s of each other = updater
 //   24 01 / 24 00  start / stop watching for the key: candidates become inputs, with pull-up and pull-down
 //                  in turn; each change notifies one byte: pin number, 40 = under pull-down, 80 = high
 //   30 rr ss mm    wake the display trying RST=Prr, SCK=Pss, MOSI=Pmm; ff = try all (blocks, see probe)
@@ -52,6 +54,7 @@ static volatile bool want_hang;
 static volatile bool want_fault;
 static volatile bool want_power;
 static volatile uint8 want_watch = 0xff;
+static volatile uint8 want_emergency = 0xff;
 static volatile bool want_pulse;
 static volatile bool want_probe;
 static volatile uint8 probe_args[3];
@@ -114,6 +117,8 @@ __attribute__((noinline)) __ATTR_SECTION_SRAM__ static void on_command(const uin
         want_power = true;
     } else if (data[0] == 0x24 && len == 2) {
         want_watch = data[1] != 0;
+    } else if (data[0] == 0x25 && len == 2) {
+        want_emergency = data[1] != 0;
     } else if (data[0] == 0x21 && len == 2) {
         hal_gpio_write(GPIO_P34, data[1] != 0);
     } else if ((data[0] == 0x20 || data[0] == 0x22) && len == 4 && !want_pulse) {
@@ -497,6 +502,104 @@ static void watch_poll(void) {
     watch_known[watch_phase] = true;
 }
 
+// Emergency exit to the updater, without BLE: covers a main loop that runs while the radio is dead,
+// which the watchdog can't see. Same gesture as MorseOS. A key stuck down can't trigger it.
+#define TOUCH_PIN GPIO_P03
+#define EM_WARN_MS  10000
+#define EM_STUCK_MS 30000
+#define EM_TAP_MS   400
+#define EM_TAPS_MS  5000
+#define GLASS_X 26
+#define GLASS_Y 1
+
+static enum { EM_OFF, EM_IDLE, EM_HELD, EM_COUNT } em_state;
+static bool em_pressed, em_valid;
+static uint32_t em_edge, em_armed;
+static uint8 em_taps;
+
+static void em_buzz(uint16 ms) {
+    pulse_number = 23;
+    pulse_level = 1;
+    pulse_ms = ms;
+    want_pulse = true;
+}
+
+static void em_screen(uint8 hi, uint8 lo) {
+    lcd_window(GLASS_X, GLASS_Y, 80, 160);
+    fill_hi = hi;
+    fill_lo = lo;
+    fill_left = 80 * 160;
+}
+
+static void em_marks(void) {
+    for (int i = 0; i < 3; i++) {
+        lcd_window(GLASS_X + 16 + i * 18, GLASS_Y + 100, 12, 8);
+        lcd_repeat(i < em_taps ? 0xff : 0x42, i < em_taps ? 0xff : 0x08, 12 * 8);
+    }
+}
+
+static void em_cancel(void) {
+    em_valid = false;
+    em_state = EM_IDLE;
+    em_screen(0, 0);
+}
+
+static void em_enable(bool on) {
+    if (on && em_state == EM_OFF) {
+        hal_gpio_pin_init(TOUCH_PIN, GPIO_INPUT);
+        hal_gpio_pull_set(TOUCH_PIN, GPIO_PULL_DOWN);
+        em_pressed = em_valid = false;
+        em_state = EM_IDLE;
+    } else if (!on) {
+        em_state = EM_OFF;
+    }
+}
+
+static void em_poll(void) {
+    if (em_state == EM_OFF || fill_left)   // while a screen is being painted
+        return;
+    uint32_t now = hal_systick();
+    bool touched = hal_gpio_read(TOUCH_PIN);
+    bool released = false;
+    uint32_t press_ticks = now - em_edge;
+    if (touched != em_pressed) {
+        em_pressed = touched;
+        em_edge = now;
+        released = !touched;
+        if (touched) {
+            em_valid = true;
+            press_ticks = 0;
+        }
+    }
+    if (em_state == EM_IDLE) {
+        if (touched && em_valid && press_ticks >= MS_TO_TICKS(EM_WARN_MS)) {
+            lcd_init();
+            em_screen(0xf8, 0x00);
+            em_buzz(400);
+            em_state = EM_HELD;
+        }
+    } else if (em_state == EM_HELD) {
+        if (touched && press_ticks >= MS_TO_TICKS(EM_STUCK_MS)) {
+            em_cancel();
+        } else if (released) {
+            em_taps = 0;
+            em_armed = now;
+            em_marks();
+            em_state = EM_COUNT;
+        }
+    } else if (released && press_ticks < MS_TO_TICKS(EM_TAP_MS)) {
+        em_taps++;
+        em_buzz(40);
+        em_marks();
+        em_armed = now;
+        if (em_taps == 3)
+            want_updater = true;
+    } else if (released || (touched && press_ticks >= MS_TO_TICKS(EM_TAP_MS)) ||
+               (!touched && now - em_armed >= MS_TO_TICKS(EM_TAPS_MS))) {
+        em_cancel();
+    }
+}
+
 static void start_pulse(void) {
     int pin = pin_of(pulse_number);
     if (pin >= 0) {
@@ -516,6 +619,7 @@ void app_init(void) {
     osal_memcpy(ownPublicAddr, addr, sizeof(addr));
     ble_set_name("FH-DEMO");
     svc_init(on_command);
+    em_enable(true);
 }
 
 void app_update(void) {
@@ -549,6 +653,11 @@ void app_update(void) {
     }
     if (watching)
         watch_poll();
+    if (want_emergency != 0xff) {
+        em_enable(want_emergency);
+        want_emergency = 0xff;
+    }
+    em_poll();
     if (pulsing && hal_systick() - pulse_start >= pulse_ticks) {
         hal_gpio_write(pulse_pin, 0);
         hal_gpio_pin_init(pulse_pin, GPIO_INPUT);
