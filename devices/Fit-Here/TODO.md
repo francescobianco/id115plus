@@ -35,7 +35,9 @@ Contesto: [`DOSSIER.md`](DOSSIER.md). Prima di qualunque comando OTA che scrive:
 - [x] Luce dello schermo: `P34`, attivo alto.
 - [x] Pin del display: RST `P01`, SCK `P31`, MOSI `P25`, DC `P00`, luce `P34` (README, "Pin dal
       codice stock"; trovati con `tools/fh_display_search.py`).
-- [ ] Display: cercare CS (forse fisso a massa), fare una init completa, verificare BGR e inversione.
+- [x] Display: init con inversione, BGR e gamma, area visibile a colonna 26, riga 1. Disegni via BLE con
+      `tools/fh_draw.py`. Verificato il 2026-11-10.
+- [ ] Display: cercare CS. L'init tiene bassi tutti i candidati, compreso `P11` (forse il tasto).
 - [ ] Trovare il tasto.
 - [ ] Demo che riporta via BLE la tensione su `P14` e il livello di `P15`, da provare mettendo e
       togliendo il braccialetto dal caricatore: verifica insieme batteria e ricarica.
@@ -45,8 +47,9 @@ Contesto: [`DOSSIER.md`](DOSSIER.md). Prima di qualunque comando OTA che scrive:
 ## Poi: firmware
 
 - [ ] Demo che vibra da sola all'avvio, la prova più semplice senza PC.
-- [ ] Prima schermata sul display.
-- [ ] Firmware vero su modello MorseOS (`../lt716`): tasto, menu, orologio.
+- [x] Prima schermata sul display.
+
+- [ ] MorseOS: piano e regole di sicurezza in [`TODO_MORSEOS.md`](TODO_MORSEOS.md).
 
 ## Facoltativo
 

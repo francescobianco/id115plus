@@ -110,7 +110,7 @@ carica e il vibro è `P03`: i pin dell'LP715 non valgono qui. Provati senza effe
 
 ```shell
 firmware/build.sh demo
-tools/phy_flash.py firmware/demo/_build/fh_demo.hex --confine 0x11000:0x27000 --yes   # dall'updater
+tools/phy_flash.py firmware/demo/_build/fh_demo.hex --confine 0x11000:0x2c000 --yes   # dall'updater
 MAC=C0:00:A1:B1:02:64 tools/phy_ota.py 4c500002=2017f401                              # vibra 500 ms
 ```
 
@@ -160,6 +160,18 @@ fatto subito dopo è falsato.
 
 Non trovato nemmeno il pin del tasto.
 
+### Disegnare (verificato il 2026-11-10)
+
+La demo inizializza il pannello e riceve disegni via BLE: `tools/fh_draw.py test | art | clear [RGB565] |
+image FILE | raw HEX`. Provato: cornice e tre quadrati nella posizione e nel colore attesi, con
+l'area visibile da 80×160 a colonna 26, riga 1 della memoria del controller. Servono inversione accesa
+(`21`) e ordine BGR (`36` = `08`). Le tabelle di gamma `e0`/`e1` usate per gli ST7735S 0,96" cambiano
+visibilmente i colori (il sole da marrone ad arancione), quindi il controller le accetta; il modello
+resta non identificato perché non si può rileggere il pannello.
+
+Nell'init la demo tiene ancora bassi tutti i candidati della ricerca, compreso `P11`, perché CS non è
+stato trovato. Va rimosso appena si conosce il pin del tasto, che non deve essere pilotato.
+
 ## Strumenti
 
 ```shell
@@ -168,6 +180,7 @@ tools/gattdump.py C0:00:A1:B1:02:61                   # tabella GATT con i valor
 tools/phy_ota.py 5833ff02=02                          # INFO dall'app
 tools/phy_ota.py 5833ff02=0102                        # app -> updater
 MAC=C0:00:A1:B1:02:62 tools/phy_ota.py 5833ff02=0401  # updater -> app (alla disconnessione)
+bluetoothctl disconnect C0:00:A1:B1:02:62             # senza questa l'updater resta connesso e non riparte
 ```
 
 Dipendenze: `python3-dbus`, `python3-gi` (BlueZ via D-Bus, come `../../id115plus`).

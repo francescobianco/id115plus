@@ -10,6 +10,13 @@
 //   30 rr ss mm    wake the display trying RST=Prr, SCK=Pss, MOSI=Pmm; ff = try all (blocks, see probe)
 //   31 rr ss mm dd hh ll  same pins plus DC=Pdd: draws a band of colour hhll, its row tells the DC pin
 //   7f a5          hang in the main loop, to test that the watchdog resets the app
+// Drawing, in panel memory coordinates (the 80x160 glass sits inside a larger memory):
+//   40             reset and set up the display, light on
+//   41 cc args...  send one raw controller command
+//   42 x y w h hh ll  fill a rectangle with colour hhll (RGB565)
+//   43 x y w h     open a window for 44
+//   44 (n hh ll)*  n pixels of colour hhll, repeated, written into the open window
+//   45             notifies byte 45 on 4c500003 once everything sent before it has been drawn
 //
 // Safety: the OTA mode is armed first, so any later soft reset lands in the updater, and the
 // watchdog resets a hung app. P07 (test mode) and P09/P10 (UART) can't be driven.
@@ -52,8 +59,31 @@ static uint32_t pulse_start, pulse_ticks;
 static uint32_t last_second;
 static uint8 counter;
 
+// Drawing commands wait here: the panel is driven from the main loop, not from the BLE task.
+// A sender must use 45 to stay within CMD_SLOTS commands ahead of the drawing.
+#define CMD_SIZE 20
+#define CMD_SLOTS 32
+
+static uint8 cmd_queue[CMD_SLOTS][CMD_SIZE];
+static uint8 cmd_len[CMD_SLOTS];
+static volatile uint8 cmd_head, cmd_tail;
+static uint32_t fill_left;
+static uint8 fill_hi, fill_lo;
+
+__attribute__((noinline)) __ATTR_SECTION_SRAM__ static void cmd_push(const uint8 *data, uint8 len) {
+    uint8 next = (cmd_head + 1) % CMD_SLOTS;
+    if (next == cmd_tail || len > CMD_SIZE)
+        return;
+    for (uint8 i = 0; i < len; i++)
+        cmd_queue[cmd_head][i] = data[i];
+    cmd_len[cmd_head] = len;
+    cmd_head = next;
+}
+
 __attribute__((noinline)) __ATTR_SECTION_SRAM__ static void on_command(const uint8 *data, uint8 len) {
-    if (data[0] == 0x04) {
+    if (data[0] >= 0x40 && data[0] <= 0x45) {
+        cmd_push(data, len);
+    } else if (data[0] == 0x04) {
         want_updater = true;
     } else if (data[0] == 0x30 && len == 4) {
         probe_args[0] = data[1];
@@ -80,7 +110,7 @@ __attribute__((noinline)) __ATTR_SECTION_SRAM__ static void on_command(const uin
     }
 }
 
-// Display search. Everything lives in SRAM: the XIP image may not grow past 0x26fff.
+// Display search. Everything lives in SRAM, to keep the XIP image small.
 // Pins not under test stay low, which covers an active-low CS and DC = command.
 #define PROBE_ANY 0xff
 #define PROBE_PINS 12
@@ -230,6 +260,115 @@ __attribute__((noinline)) __ATTR_SECTION_SRAM__ static void probe(void) {
     }
 }
 
+// The panel: pins found with tools/fh_display_search.py. Written straight to the port register, about
+// ten times faster than hal_gpio_write, which also reconfigures the pin on every call.
+#define TFT_RST   GPIO_P01
+#define TFT_SCK   GPIO_P31
+#define TFT_MOSI  GPIO_P25
+#define TFT_DC    GPIO_P00
+#define TFT_LIGHT GPIO_P34
+#define FILL_SLICE 132   // pixels per pass of the main loop, so the BLE task keeps running
+
+__ATTR_SECTION_SRAM__ static void lcd_byte(uint8 value) {
+    volatile uint32_t *port = &AP_GPIO->swporta_dr;
+    uint32_t idle = *port & ~(BIT(TFT_SCK) | BIT(TFT_MOSI));
+    for (int bit = 7; bit >= 0; bit--) {
+        uint32_t out = (value >> bit) & 1 ? idle | BIT(TFT_MOSI) : idle;
+        *port = out;
+        *port = out | BIT(TFT_SCK);
+        *port = out;
+    }
+}
+
+__ATTR_SECTION_SRAM__ static void lcd_dc(int data) {
+    if (data)
+        AP_GPIO->swporta_dr |= BIT(TFT_DC);
+    else
+        AP_GPIO->swporta_dr &= ~BIT(TFT_DC);
+}
+
+__ATTR_SECTION_SRAM__ static void lcd_command(uint8 cmd, const uint8 *args, int count) {
+    lcd_dc(0);
+    lcd_byte(cmd);
+    lcd_dc(1);
+    for (int i = 0; i < count; i++)
+        lcd_byte(args[i]);
+    lcd_dc(0);
+}
+
+__ATTR_SECTION_SRAM__ static void lcd_repeat(uint8 hi, uint8 lo, uint32_t count) {
+    while (count--) {
+        lcd_byte(hi);
+        lcd_byte(lo);
+    }
+}
+
+// Leaves the controller in memory write, ready for pixels.
+__attribute__((noinline)) __ATTR_SECTION_SRAM__ static void lcd_window(uint8 x, uint8 y, uint8 w, uint8 h) {
+    uint8 columns[4] = {0, x, 0, (uint8)(x + w - 1)};
+    uint8 rows[4] = {0, y, 0, (uint8)(y + h - 1)};
+    lcd_command(0x2a, columns, 4);
+    lcd_command(0x2b, rows, 4);
+    lcd_command(0x2c, 0, 0);
+    lcd_dc(1);
+}
+
+// The other candidates stay low as in the search: CS may be one of them, if it isn't tied to ground.
+// Colours came out inverted and with red and blue swapped without 21 and bit 3 of 36.
+__attribute__((noinline)) __ATTR_SECTION_SRAM__ static void lcd_init(void) {
+    uint8 colmod = 0x05, madctl = 0x08;
+    static uint8 gamma_pos[16] = {0x02, 0x1c, 0x07, 0x12, 0x37, 0x32, 0x29, 0x2d,
+                                  0x29, 0x25, 0x2b, 0x39, 0x00, 0x01, 0x03, 0x10};
+    static uint8 gamma_neg[16] = {0x03, 0x1d, 0x07, 0x06, 0x2e, 0x2c, 0x29, 0x2d,
+                                  0x2e, 0x2e, 0x37, 0x3f, 0x00, 0x00, 0x02, 0x10};
+    for (int i = 0; i < PROBE_PINS; i++)
+        hal_gpio_write((gpio_pin_e)probe_list[i], 0);
+    wait_ms(20);
+    hal_gpio_write(TFT_RST, 1);
+    wait_ms(120);
+    lcd_command(0x11, 0, 0);          // sleep out
+    wait_ms(120);
+    lcd_command(0x21, 0, 0);          // inversion on
+    lcd_command(0x3a, &colmod, 1);    // 16 bit per pixel
+    lcd_command(0x36, &madctl, 1);    // BGR panel
+    lcd_command(0xe0, gamma_pos, 16); // without these, mid tones come out too dark
+    lcd_command(0xe1, gamma_neg, 16);
+    lcd_command(0x29, 0, 0);          // display on
+    hal_gpio_write(TFT_LIGHT, 1);
+}
+
+__attribute__((noinline)) __ATTR_SECTION_SRAM__ static void draw_command(const uint8 *d, uint8 len) {
+    if (d[0] == 0x40 && len == 1) {
+        lcd_init();
+    } else if (d[0] == 0x41 && len >= 2) {
+        lcd_command(d[1], d + 2, len - 2);
+    } else if (d[0] == 0x42 && len == 7) {
+        lcd_window(d[1], d[2], d[3], d[4]);
+        fill_hi = d[5];
+        fill_lo = d[6];
+        fill_left = (uint32_t)d[3] * d[4];
+    } else if (d[0] == 0x43 && len == 5) {
+        lcd_window(d[1], d[2], d[3], d[4]);
+    } else if (d[0] == 0x44) {
+        for (int i = 1; i + 2 < len; i += 3)
+            lcd_repeat(d[i + 1], d[i + 2], d[i]);
+    } else if (d[0] == 0x45) {
+        svc_event((svc_event_t)0x45);
+    }
+}
+
+// One step per pass: part of a fill, or the next queued command.
+__attribute__((noinline)) __ATTR_SECTION_SRAM__ static void draw_step(void) {
+    if (fill_left) {
+        uint32_t n = fill_left > FILL_SLICE ? FILL_SLICE : fill_left;
+        lcd_repeat(fill_hi, fill_lo, n);
+        fill_left -= n;
+    } else if (cmd_tail != cmd_head) {
+        draw_command(cmd_queue[cmd_tail], cmd_len[cmd_tail]);
+        cmd_tail = (cmd_tail + 1) % CMD_SLOTS;
+    }
+}
+
 static void start_pulse(void) {
     int pin = pin_of(pulse_number);
     if (pin >= 0) {
@@ -261,6 +400,7 @@ void app_update(void) {
         want_probe = false;
         probe();
     }
+    draw_step();
     if (pulsing && hal_systick() - pulse_start >= pulse_ticks) {
         hal_gpio_write(pulse_pin, 0);
         hal_gpio_pin_init(pulse_pin, GPIO_INPUT);
