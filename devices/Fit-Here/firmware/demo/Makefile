@@ -2,6 +2,7 @@
 TARGET     = fh_demo
 SRC        = main.c
 LIB_SRC    = ble/services.c
+SDK_EXTRA  = components/driver/adc/adc.c
 BLE        = 1
 OTA        = 1
 SYS_CLK    = SYS_CLK_XTAL_16M

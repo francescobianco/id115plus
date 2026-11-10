@@ -28,7 +28,7 @@ Valgono per ogni flash.
 | Eccezione del processore | watchdog | provato |
 | Ciclo vivo, Bluetooth morto | emergenza col tasto | manca (fase 4) |
 | Blocco prima di `app_init` | non toccare l'avvio | solo per disciplina |
-| Batteria scarica senza ricarica | verifica della ricarica | da provare (fase 2) |
+| Batteria scarica senza ricarica | si ricarica col nostro firmware | provato, carica completa no |
 
 ## Fasi
 
@@ -41,8 +41,9 @@ Ogni fase è una flash e si chiude solo con la prova indicata.
 
 ### 2. Batteria e ricarica
 
-- [ ] Riportare via BLE la tensione su `P14` e il livello di `P15` (analisi statica, mai provati).
-- [ ] Prova: con il braccialetto sul caricatore la tensione sale e `P15` cambia.
+- [x] Comando `23` e `tools/fh_power.py`: tensione su `P14` e livello di `P15`.
+- [x] Prova del 2026-11-10: sul caricatore `P15` = 1 e circa 4,05 V, staccato `P15` = 0 e circa 3,96 V in
+      calo, rimesso `P15` = 1 e 4,06 V. Non seguita fino alla carica completa.
 
 ### 3. Tasto e pin del display
 

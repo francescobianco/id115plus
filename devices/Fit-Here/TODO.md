@@ -17,8 +17,8 @@ Contesto: [`DOSSIER.md`](DOSSIER.md). Prima di qualunque comando OTA che scrive:
 
 ## Subito: la rete di sicurezza
 
-- [ ] **Ricarica**: non si può verificare con la demo attuale, la cui batteria BLE è un contatore.
-      Serve prima trovare il pin della batteria nel codice stock e leggere la tensione via ADC.
+- [x] **Ricarica**: la tensione sale sul caricatore col nostro firmware (`tools/fh_power.py`). Verificato
+      il 2026-11-10, non seguita fino alla carica completa.
 - [x] **Ritorno all'updater**: `MAC=C0:00:A1:B1:02:64 tools/phy_ota.py 4c500002=04` porta a
       `PPlusOTA`, poi `MAC=C0:00:A1:B1:02:62 tools/phy_ota.py 5833ff02=0401` torna alla demo.
       Verificato il 2026-11-09.
@@ -39,10 +39,8 @@ Contesto: [`DOSSIER.md`](DOSSIER.md). Prima di qualunque comando OTA che scrive:
       `tools/fh_draw.py`. Verificato il 2026-11-10.
 - [ ] Display: cercare CS. L'init tiene bassi tutti i candidati, compreso `P11` (forse il tasto).
 - [ ] Trovare il tasto.
-- [ ] Demo che riporta via BLE la tensione su `P14` e il livello di `P15`, da provare mettendo e
-      togliendo il braccialetto dal caricatore: verifica insieme batteria e ricarica.
+- [x] Tensione su `P14` e caricatore su `P15` letti via BLE, provati mettendo e togliendo il caricatore.
 - [ ] Identificare il controller del display e portare il driver (l'LP715 usa un JD9850).
-- [ ] Leggere la batteria via ADC e gestire la carica.
 
 ## Poi: firmware
 

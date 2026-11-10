@@ -7,6 +7,7 @@
 //   20 pp lo hi    drive pin Ppp (decimal number as hex, e.g. 03) high for lo + hi*256 ms, max 500
 //   21 vv          screen light on P34: 01 on, 00 off (held, unlike the pulses)
 //   22 pp lo hi    same as 20 but drives the pin low
+//   23             measure: notifies on 4c500003, one byte each: 23, P14 mV lo, hi (ffff = failed), P15
 //   30 rr ss mm    wake the display trying RST=Prr, SCK=Pss, MOSI=Pmm; ff = try all (blocks, see probe)
 //   31 rr ss mm dd hh ll  same pins plus DC=Pdd: draws a band of colour hhll, its row tells the DC pin
 //   7f a5          hang in the main loop, to test that the watchdog resets the app
@@ -26,6 +27,7 @@
 #include "ble/services.h"
 #include "OSAL.h"
 #include "watchdog.h"
+#include "adc.h"
 
 #define OTA_MODE_REG (*(volatile uint32_t *)0x4000f034)
 #define MS_TO_TICKS(ms) ((ms) * 8 / 5)   // hal_systick() counts 625 us slots
@@ -46,6 +48,7 @@ static const struct {
 static volatile bool want_updater;
 static volatile bool want_hang;
 static volatile bool want_fault;
+static volatile bool want_power;
 static volatile bool want_pulse;
 static volatile bool want_probe;
 static volatile uint8 probe_args[3];
@@ -104,6 +107,8 @@ __attribute__((noinline)) __ATTR_SECTION_SRAM__ static void on_command(const uin
         want_hang = true;
     } else if (data[0] == 0x7f && len == 2 && data[1] == 0x5a) {
         want_fault = true;
+    } else if (data[0] == 0x23 && len == 1) {
+        want_power = true;
     } else if (data[0] == 0x21 && len == 2) {
         hal_gpio_write(GPIO_P34, data[1] != 0);
     } else if ((data[0] == 0x20 || data[0] == 0x22) && len == 4 && !want_pulse) {
@@ -373,6 +378,62 @@ __attribute__((noinline)) __ATTR_SECTION_SRAM__ static void draw_step(void) {
     }
 }
 
+// Battery and charger, from the stock code: P14 through a divider into the ADC, P15 input with
+// pull-down. Set up on the first request, nothing is driven. lib/power can't be used: it drives P23,
+// which here is the vibrator.
+#define ADC_SAMPLES 32
+#define ADC_TIMEOUT_MS 100
+
+static adc_Cfg_t adc_cfg = {
+    .channel = ADC_BIT(ADC_CH2P_P14),
+    .is_continue_mode = FALSE,
+    .is_differential_mode = 0x00,
+    .is_high_resolution = ADC_BIT(ADC_CH2P_P14),
+};
+static uint16_t adc_samples[ADC_SAMPLES];
+static uint8 adc_count;
+static volatile bool adc_done;
+static bool power_ready;
+static uint8 report[4];
+static uint8 report_next = sizeof(report);
+
+static void adc_event(adc_Evt_t *ev) {
+    if (ev->type != HAL_ADC_EVT_DATA || ev->ch != ADC_CH2P_P14)
+        return;
+    adc_count = ev->size > ADC_SAMPLES ? ADC_SAMPLES : ev->size;
+    for (int i = 0; i < adc_count; i++)
+        adc_samples[i] = ev->data[i];
+    adc_done = true;
+}
+
+static int read_pin_mv(void) {
+    adc_done = false;
+    if (hal_adc_config_channel(adc_cfg, adc_event) != 0 || hal_adc_start() != 0)
+        return -1;
+    uint32_t start = hal_systick();
+    while (!adc_done && hal_systick() - start < MS_TO_TICKS(ADC_TIMEOUT_MS))
+        ;
+    hal_adc_stop();
+    if (!adc_done)
+        return -1;
+    return (int)hal_adc_value_cal(ADC_CH2P_P14, adc_samples, adc_count, 1, 0);
+}
+
+static void measure_power(void) {
+    if (!power_ready) {
+        hal_gpio_pin_init(GPIO_P15, GPIO_INPUT);
+        hal_gpio_pull_set(GPIO_P15, GPIO_PULL_DOWN);
+        hal_adc_init();
+        power_ready = true;
+    }
+    int mv = read_pin_mv();
+    report[0] = 0x23;
+    report[1] = mv;
+    report[2] = mv >> 8;
+    report[3] = hal_gpio_read(GPIO_P15);
+    report_next = 0;
+}
+
 static void start_pulse(void) {
     int pin = pin_of(pulse_number);
     if (pin >= 0) {
@@ -407,6 +468,12 @@ void app_update(void) {
         probe();
     }
     draw_step();
+    if (want_power) {
+        want_power = false;
+        measure_power();
+    } else if (report_next < sizeof(report)) {
+        svc_event((svc_event_t)report[report_next++]);   // one per pass, the link has few buffers
+    }
     if (pulsing && hal_systick() - pulse_start >= pulse_ticks) {
         hal_gpio_write(pulse_pin, 0);
         hal_gpio_pin_init(pulse_pin, GPIO_INPUT);

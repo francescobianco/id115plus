@@ -30,7 +30,7 @@ non si può ripristinare: della flash originale resta il dump, senza la parte SR
 
 ## Cosa non è dimostrato
 
-- La ricarica sotto il nostro firmware. Se non funziona, a batteria scarica servirà aprirlo.
+- La carica completa sotto il nostro firmware: la tensione sale sul caricatore, ma non è stata seguita fino al 100 %.
 - Un blocco prima che `app_init` avvii il watchdog, o un'immagine che non parte affatto.
 - Che i pin senza effetto siano davvero inutili: si è guardato solo vibrazione o luce.
 
