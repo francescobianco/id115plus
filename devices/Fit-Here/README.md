@@ -155,11 +155,12 @@ o `P02` non compare, e un riavvio (`04`) non la mostra.
 ripassando con un altro colore la banda cambia esattamente al passo di `P00`, nella riga prevista per
 quel pin (136). Il controller risponde a `2a`, `2b`, `2c`, `3a` con pixel a 16 bit. Il rosso `f800`, a
 inversione spenta, si vede giallo: compatibile con ordine BGR e pannello a colori invertiti (IPS), da
-verificare. CS non trovato: finora è sempre rimasto basso, forse è fisso a massa. Non è ancora una
+verificare. CS allora era sempre basso. Non è ancora una
 inizializzazione completa del controller. Cautela nei test: le vibrazioni possono far tremolare lo schermo, e un conteggio di lampeggi
 fatto subito dopo è falsato.
 
-Non trovato nemmeno il pin del tasto.
+**Tasto: zona touch su `P03`, attiva alta** (2026-11-10, `tools/fh_keyfind.py`): è l'unico pin che cambia,
+sotto pull-up e pull-down, quindi è l'uscita di un chip touch e non va pilotato.
 
 ### Disegnare (verificato il 2026-11-10)
 
@@ -170,8 +171,8 @@ l'area visibile da 80×160 a colonna 26, riga 1 della memoria del controller. Se
 visibilmente i colori (il sole da marrone ad arancione), quindi il controller le accetta; il modello
 resta non identificato perché non si può rileggere il pannello.
 
-Nell'init la demo tiene ancora bassi tutti i candidati della ricerca, compreso `P11`, perché CS non è
-stato trovato. Va rimosso appena si conosce il pin del tasto, che non deve essere pilotato.
+**CS è `P02`** (2026-11-10): alzando un candidato alla volta, l'unica banda che non viene disegnata è
+quella di `P02`. L'init guida solo RST, SCK, MOSI, DC e CS.
 
 ## Strumenti
 

@@ -8,6 +8,8 @@
 //   21 vv          screen light on P34: 01 on, 00 off (held, unlike the pulses)
 //   22 pp lo hi    same as 20 but drives the pin low
 //   23             measure: notifies on 4c500003, one byte each: 23, P14 mV lo, hi (ffff = failed), P15
+//   24 01 / 24 00  start / stop watching for the key: candidates become inputs, with pull-up and pull-down
+//                  in turn; each change notifies one byte: pin number, 40 = under pull-down, 80 = high
 //   30 rr ss mm    wake the display trying RST=Prr, SCK=Pss, MOSI=Pmm; ff = try all (blocks, see probe)
 //   31 rr ss mm dd hh ll  same pins plus DC=Pdd: draws a band of colour hhll, its row tells the DC pin
 //   7f a5          hang in the main loop, to test that the watchdog resets the app
@@ -49,6 +51,7 @@ static volatile bool want_updater;
 static volatile bool want_hang;
 static volatile bool want_fault;
 static volatile bool want_power;
+static volatile uint8 want_watch = 0xff;
 static volatile bool want_pulse;
 static volatile bool want_probe;
 static volatile uint8 probe_args[3];
@@ -109,6 +112,8 @@ __attribute__((noinline)) __ATTR_SECTION_SRAM__ static void on_command(const uin
         want_fault = true;
     } else if (data[0] == 0x23 && len == 1) {
         want_power = true;
+    } else if (data[0] == 0x24 && len == 2) {
+        want_watch = data[1] != 0;
     } else if (data[0] == 0x21 && len == 2) {
         hal_gpio_write(GPIO_P34, data[1] != 0);
     } else if ((data[0] == 0x20 || data[0] == 0x22) && len == 4 && !want_pulse) {
@@ -275,6 +280,7 @@ __attribute__((noinline)) __ATTR_SECTION_SRAM__ static void probe(void) {
 #define TFT_SCK   GPIO_P31
 #define TFT_MOSI  GPIO_P25
 #define TFT_DC    GPIO_P00
+#define TFT_CS    GPIO_P02         // always selected: low
 #define TFT_LIGHT GPIO_P34
 #define FILL_SLICE 132   // pixels per pass of the main loop, so the BLE task keeps running
 
@@ -322,7 +328,6 @@ __attribute__((noinline)) __ATTR_SECTION_SRAM__ static void lcd_window(uint8 x, 
     lcd_dc(1);
 }
 
-// The other candidates stay low as in the search: CS may be one of them, if it isn't tied to ground.
 // Colours came out inverted and with red and blue swapped without 21 and bit 3 of 36.
 __attribute__((noinline)) __ATTR_SECTION_SRAM__ static void lcd_init(void) {
     uint8 colmod = 0x05, madctl = 0x08;
@@ -330,8 +335,11 @@ __attribute__((noinline)) __ATTR_SECTION_SRAM__ static void lcd_init(void) {
                                   0x29, 0x25, 0x2b, 0x39, 0x00, 0x01, 0x03, 0x10};
     static uint8 gamma_neg[16] = {0x03, 0x1d, 0x07, 0x06, 0x2e, 0x2c, 0x29, 0x2d,
                                   0x2e, 0x2e, 0x37, 0x3f, 0x00, 0x00, 0x02, 0x10};
-    for (int i = 0; i < PROBE_PINS; i++)
-        hal_gpio_write((gpio_pin_e)probe_list[i], 0);
+    hal_gpio_write(TFT_CS, 0);
+    hal_gpio_write(TFT_RST, 0);
+    hal_gpio_write(TFT_SCK, 0);
+    hal_gpio_write(TFT_MOSI, 0);
+    hal_gpio_write(TFT_DC, 0);
     wait_ms(20);
     hal_gpio_write(TFT_RST, 1);
     wait_ms(120);
@@ -434,6 +442,61 @@ static void measure_power(void) {
     report_next = 0;
 }
 
+// Key search: nothing is driven. A floating pin follows the pull and stays quiet phase after phase; a
+// button only shows under the pull that opposes it, a touch chip's output under both.
+#define WATCH_PHASE_TICKS 50     // passes of app_update, 10 ms each
+#define WATCH_SETTLE_TICKS 3
+#define WATCH_PINS 11
+#define WATCH_QUEUE 16
+
+static const uint8 watch_list[WATCH_PINS] = {3, 11, 16, 17, 18, 20, 24, 26, 27, 32, 33};
+static bool watching;
+static uint8 watch_phase, watch_ticks;
+static bool watch_known[2];
+static uint8 watch_level[2][WATCH_PINS];
+static uint8 watch_queue[WATCH_QUEUE];
+static uint8 watch_head, watch_tail;
+
+static void watch_pull(gpio_pupd_e pull) {
+    for (int i = 0; i < WATCH_PINS; i++)
+        hal_gpio_pull_set((gpio_pin_e)pin_of(watch_list[i]), pull);
+}
+
+static void watch_start(void) {
+    for (int i = 0; i < WATCH_PINS; i++)
+        hal_gpio_pin_init((gpio_pin_e)pin_of(watch_list[i]), GPIO_INPUT);
+    watch_pull(GPIO_PULL_UP);
+    watch_phase = 0;
+    watch_ticks = 0;
+    watch_known[0] = watch_known[1] = false;
+    watching = true;
+}
+
+static void watch_stop(void) {
+    watch_pull(GPIO_FLOATING);
+    watching = false;
+}
+
+static void watch_poll(void) {
+    if (++watch_ticks >= WATCH_PHASE_TICKS) {
+        watch_ticks = 0;
+        watch_phase ^= 1;
+        watch_pull(watch_phase ? GPIO_PULL_DOWN : GPIO_PULL_UP);
+    }
+    if (watch_ticks < WATCH_SETTLE_TICKS)
+        return;
+    for (int i = 0; i < WATCH_PINS; i++) {
+        uint8 level = hal_gpio_read((gpio_pin_e)pin_of(watch_list[i]));
+        uint8 next = (watch_head + 1) % WATCH_QUEUE;
+        if (watch_known[watch_phase] && level != watch_level[watch_phase][i] && next != watch_tail) {
+            watch_queue[watch_head] = watch_list[i] | watch_phase << 6 | level << 7;
+            watch_head = next;
+        }
+        watch_level[watch_phase][i] = level;
+    }
+    watch_known[watch_phase] = true;
+}
+
 static void start_pulse(void) {
     int pin = pin_of(pulse_number);
     if (pin >= 0) {
@@ -473,7 +536,19 @@ void app_update(void) {
         measure_power();
     } else if (report_next < sizeof(report)) {
         svc_event((svc_event_t)report[report_next++]);   // one per pass, the link has few buffers
+    } else if (watch_tail != watch_head) {
+        svc_event((svc_event_t)watch_queue[watch_tail]);
+        watch_tail = (watch_tail + 1) % WATCH_QUEUE;
     }
+    if (want_watch != 0xff) {
+        if (want_watch)
+            watch_start();
+        else if (watching)
+            watch_stop();
+        want_watch = 0xff;
+    }
+    if (watching)
+        watch_poll();
     if (pulsing && hal_systick() - pulse_start >= pulse_ticks) {
         hal_gpio_write(pulse_pin, 0);
         hal_gpio_pin_init(pulse_pin, GPIO_INPUT);

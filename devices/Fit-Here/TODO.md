@@ -28,8 +28,8 @@ Contesto: [`DOSSIER.md`](DOSSIER.md). Prima di qualunque comando OTA che scrive:
 
 ## Poi: hardware
 
-- [ ] Finire gli impulsi sui pin mancanti: `P17`, `P24`, `P25`, `P27`, `P31`, `P32`, `P33`, `P34`.
-      Esclusi per sicurezza: `P07` (test mode), `P09`/`P10` (UART). `P11` probabilmente è il tasto.
+- [ ] Finire gli impulsi sui pin mancanti: `P17`, `P24`, `P27`, `P32`, `P33`.
+      Esclusi per sicurezza: `P07` (test mode), `P09`/`P10` (UART).
 - [x] Analisi delle chiamate rifatta sul codice stock: batteria, `P15`, I2C (tabella nel README,
       sezione "Pin dal codice stock"). Sono risultati statici, da provare sul dispositivo.
 - [x] Luce dello schermo: `P34`, attivo alto.
@@ -37,8 +37,7 @@ Contesto: [`DOSSIER.md`](DOSSIER.md). Prima di qualunque comando OTA che scrive:
       codice stock"; trovati con `tools/fh_display_search.py`).
 - [x] Display: init con inversione, BGR e gamma, area visibile a colonna 26, riga 1. Disegni via BLE con
       `tools/fh_draw.py`. Verificato il 2026-11-10.
-- [ ] Display: cercare CS. L'init tiene bassi tutti i candidati, compreso `P11` (forse il tasto).
-- [ ] Trovare il tasto.
+- [x] Display: CS `P02`. Tasto: zona touch su `P03`, attiva alta. Verificati il 2026-11-10.
 - [x] Tensione su `P14` e caricatore su `P15` letti via BLE, provati mettendo e togliendo il caricatore.
 - [ ] Identificare il controller del display e portare il driver (l'LP715 usa un JD9850).
 

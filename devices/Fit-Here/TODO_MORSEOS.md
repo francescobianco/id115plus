@@ -47,10 +47,10 @@ Ogni fase è una flash e si chiude solo con la prova indicata.
 
 ### 3. Tasto e pin del display
 
-- [ ] Leggere i pin candidati senza pilotarli, con pull-up e pull-down alternati, e riportare i cambi di
-      livello. Prova: un solo pin cambia quando si tocca il tasto.
-- [ ] Smettere di pilotare gli altri candidati nell'init del display, `P11` compreso. Prova: si disegna
-      ancora. Se smette, uno di loro è CS.
+- [x] Tasto: è una zona touch su `P03`, attiva alta, guidata dal chip touch (`tools/fh_keyfind.py`).
+      Verificato il 2026-11-10.
+- [x] CS del display: `P02`, tenuto basso. L'init ora guida solo RST, SCK, MOSI, DC e CS, e il display
+      disegna ancora. Verificato il 2026-11-10.
 
 ### 4. Emergenza col tasto
 
