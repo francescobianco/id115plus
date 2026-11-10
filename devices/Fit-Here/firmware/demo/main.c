@@ -10,6 +10,7 @@
 //   30 rr ss mm    wake the display trying RST=Prr, SCK=Pss, MOSI=Pmm; ff = try all (blocks, see probe)
 //   31 rr ss mm dd hh ll  same pins plus DC=Pdd: draws a band of colour hhll, its row tells the DC pin
 //   7f a5          hang in the main loop, to test that the watchdog resets the app
+//   7f 5a          take a processor exception in the main loop, same test
 // Drawing, in panel memory coordinates (the 80x160 glass sits inside a larger memory):
 //   40             reset and set up the display, light on
 //   41 cc args...  send one raw controller command
@@ -44,6 +45,7 @@ static const struct {
 
 static volatile bool want_updater;
 static volatile bool want_hang;
+static volatile bool want_fault;
 static volatile bool want_pulse;
 static volatile bool want_probe;
 static volatile uint8 probe_args[3];
@@ -100,6 +102,8 @@ __attribute__((noinline)) __ATTR_SECTION_SRAM__ static void on_command(const uin
         want_probe = true;
     } else if (data[0] == 0x7f && len == 2 && data[1] == 0xa5) {
         want_hang = true;
+    } else if (data[0] == 0x7f && len == 2 && data[1] == 0x5a) {
+        want_fault = true;
     } else if (data[0] == 0x21 && len == 2) {
         hal_gpio_write(GPIO_P34, data[1] != 0);
     } else if ((data[0] == 0x20 || data[0] == 0x22) && len == 4 && !want_pulse) {
@@ -396,6 +400,8 @@ void app_update(void) {
         hal_system_soft_reset();
     while (want_hang)
         ;
+    if (want_fault)
+        __asm volatile ("udf #0");
     if (want_probe) {
         want_probe = false;
         probe();

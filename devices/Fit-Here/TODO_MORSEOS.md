@@ -25,7 +25,7 @@ Valgono per ogni flash.
 |---|---|---|
 | Blocco del ciclo principale | watchdog verso l'updater | provato |
 | Firmware sbagliato, OTA interrotta | updater separato | provato |
-| Eccezione del processore | watchdog | da provare (fase 1) |
+| Eccezione del processore | watchdog | provato |
 | Ciclo vivo, Bluetooth morto | emergenza col tasto | manca (fase 4) |
 | Blocco prima di `app_init` | non toccare l'avvio | solo per disciplina |
 | Batteria scarica senza ricarica | verifica della ricarica | da provare (fase 2) |
@@ -36,8 +36,8 @@ Ogni fase è una flash e si chiude solo con la prova indicata.
 
 ### 1. Eccezione
 
-- [ ] Comando `7f 5a` che esegue un'istruzione non valida nel ciclo principale. Prova: dopo circa 9 s
-      compare `PPlusOTA`.
+- [x] Comando `7f 5a` che esegue un'istruzione non valida nel ciclo principale: `PPlusOTA` compare
+      circa 8 s dopo. Verificato il 2026-11-10.
 
 ### 2. Batteria e ricarica
 

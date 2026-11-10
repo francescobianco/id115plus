@@ -102,7 +102,8 @@ Riferimenti: sorgenti SDK in
 `firmware/demo` (verificato il 2026-11-09): si annuncia come `FH-DEMO` a `C0:00:A1:B1:02:64`, il
 Battery Level è un contatore (+1 al secondo), sul controllo `4c500002` risponde a `20 pp lo hi`
 (impulso sul pin), `04` (ritorno all'updater) e `7f a5` (blocca il ciclo principale, per provare il
-watchdog: dopo circa 9 s riparte in `PPlusOTA`).
+watchdog: dopo circa 9 s riparte in `PPlusOTA`) e `7f 5a` (eccezione del processore, stesso esito,
+verificato il 2026-11-10).
 
 Pin noti: **vibro `P23`, attivo alto** (trovato con gli impulsi). Sull'LP715 `P23` controlla la
 carica e il vibro è `P03`: i pin dell'LP715 non valgono qui. Provati senza effetti visibili: `P00`,
